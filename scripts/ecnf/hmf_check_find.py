@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 r""" Functions to check consistency of data between elliptic curves and
 Hilbert Modular Forms databases:  """
-from __future__ import print_function
+
 
 # 2018-12-14: converted to work with the postgres database (JEC)
 
@@ -11,7 +11,6 @@ from lmfdb import db
 
 print("setting nfcurves")
 nfcurves = db.ec_nfcurves
-qcurves = db.ec_curves
 
 print("setting hmfs, forms, fields")
 forms = db.hmf_forms

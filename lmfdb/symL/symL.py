@@ -13,10 +13,6 @@ AUTHORS:
 #
 #                  http://www.gnu.org/licenses/
 ########################################################################
-from __future__ import print_function
-from __future__ import absolute_import
-from six.moves import range
-
 from sage.structure.sage_object import SageObject
 import sage.rings.all
 
@@ -48,7 +44,7 @@ class SymmetricPowerLFunction(SageObject):
         self._construct_L()
 
     def eulerFactor(self, p):
-        """
+        r"""
         Euler Factor, in the form [c_0,c_1,c_2,...], where \sum c_i x^i is the polynomial giving the euler factor
         """
         if p in self.bad_primes:

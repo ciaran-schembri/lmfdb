@@ -2,19 +2,19 @@
 
 import ast
 import re
-from six import BytesIO
+from io import BytesIO
 import time
 
 from flask import render_template, request, url_for, redirect, make_response,  send_file
 from sage.all import latex, matrix, sqrt, sage_eval, prime_range
 
 from lmfdb import db
-from lmfdb.utils import parse_ints, clean_input, search_wrap, flash_error
+from lmfdb.utils import parse_ints, clean_input, search_wrap, flash_error, redirect_no_cache
 from lmfdb.hecke_algebras import hecke_algebras_page
 from lmfdb.hecke_algebras.hecke_algebras_stats import hecke_algebras_summary
 
 hecke_algebras_credit = 'Samuele Anni, Panagiotis Tsaknias and Gabor Wiese'
-l_range=[ell for ell in prime_range(14)]
+l_range = list(prime_range(14))
 
 #breadcrumbs and links for data quality entries
 
@@ -56,10 +56,10 @@ def hecke_algebras_render_webpage():
 
 # Random hecke_algebras
 @hecke_algebras_page.route("/random")
+@redirect_no_cache
 def random_hecke_algebra():
     label = db.hecke_algebras.random()
-    return redirect(url_for(".render_hecke_algebras_webpage", label=label))
-
+    return url_for(".render_hecke_algebras_webpage", label=label)
 
 
 hecke_algebras_label_regex = re.compile(r'(\d+)\.(\d+)\.(\d*)')

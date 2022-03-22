@@ -3,7 +3,6 @@
 # for the user management
 # author: harald schilly <harald.schilly@univie.ac.at>
 
-from __future__ import absolute_import
 import flask
 from functools import wraps
 from lmfdb.app import app
@@ -99,7 +98,6 @@ def base_bread():
 
 
 @login_page.route("/")
-@login_required
 def list():
     COLS = 5
     users = userdb.get_user_list()
@@ -107,7 +105,7 @@ def list():
     users = sorted(users, key=lambda x: x[1].strip().split(" ")[-1].lower())
     if len(users)%COLS:
         users += [{} for i in range(COLS-len(users)%COLS)]
-    n = len(users)/COLS
+    n = len(users)//COLS
     user_rows = tuple(zip(*[users[i*n: (i + 1)*n] for i in range(COLS)]))
     bread = base_bread()
     return render_template("user-list.html", title="All Users",
@@ -144,17 +142,19 @@ def info():
 @login_required
 def set_info():
     for k, v in request.form.items():
-        setattr(current_user, k, v)
+        if v:
+            setattr(current_user, k, v)
     current_user.save()
     flask.flash(Markup("Thank you for updating your details!"))
     return flask.redirect(url_for(".info"))
 
 
 @login_page.route("/profile/<userid>")
-@login_required
 def profile(userid):
-    # See issue #1169
     user = LmfdbUser(userid)
+    if not user.exists:
+        flash_error("User %s does not exist", userid)
+        return flask.redirect(url_for(".list"))
     bread = base_bread() + [(user.name, url_for('.profile', userid=user.get_id()))]
     from lmfdb.knowledge.knowl import knowldb
     userknowls = knowldb.search(author=userid, sort=['title'])
@@ -164,11 +164,13 @@ def profile(userid):
 
 @login_page.route("/login", methods=["POST"])
 def login(**kwargs):
-    # login and validate the user …
-    # remember = True sets a cookie to remember the user
+    """
+    login and validate the user …
+    remember = True sets a cookie to remember the user
+    """
     name = request.form["name"]
     password = request.form["password"]
-    next = request.form["next"]
+    nxt = request.form["next"]
     remember = request.form.get("remember") == "on"
     user = LmfdbUser(name)
     if user and user.authenticate(password):
@@ -176,7 +178,7 @@ def login(**kwargs):
         flask.flash(Markup("Hello %s, your login was successful!" % user.name))
         logger.info("login: '%s' - '%s'" % (user.get_id(), user.name))
         # FIXME add color cookie, see change_colors
-        return flask.redirect(next or url_for(".info"))
+        return flask.redirect(nxt or url_for(".info"))
     flash_error("Oops! Wrong username or password.")
     return flask.redirect(url_for(".info"))
 
@@ -203,7 +205,7 @@ def knowl_reviewer_required(fn):
     def decorated_view(*args, **kwargs):
         logger.info("reviewer access attempt by %s" % current_user.get_id())
         if not current_user.is_knowl_reviewer():
-            return flask.abort(403)  # acess denied
+            return flask.abort(403)  # access denied
         return fn(*args, **kwargs)
     return decorated_view
 
@@ -242,7 +244,7 @@ def register(N=10):
 @login_page.route("/register/<token>", methods=['GET', 'POST'])
 def register_token(token):
     if not userdb._rw_userdb:
-        flask.abort(401, "no attempt to create user, not enough privileges");
+        flask.abort(401, "no attempt to create user, not enough privileges")
     userdb.delete_old_tokens()
     if not userdb.token_exists(token):
         flask.abort(401)
@@ -325,11 +327,11 @@ def admin():
 def restart():
     import sys
     from subprocess import Popen, PIPE
-    from six.moves.urllib.parse import urlparse
+    from urllib.parse import urlparse
     urlparts = urlparse(request.url)
     if urlparts.netloc == "beta.lmfdb.org":
         command = ['bash', '/home/lmfdb/restart-dev']
-    elif urlparts.netloc in  ["prodweb1.lmfdb.xyz", "prodweb2.lmfdb.xyz"]:
+    elif urlparts.netloc in ["prodweb1.lmfdb.xyz", "prodweb2.lmfdb.xyz"]:
         command = ['bash', '/home/lmfdb/restart-web']
     else:
         command = None

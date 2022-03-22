@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 # HeckeCharacters.py
-from six.moves import range
-
 from sage.all import gp, xmrange, Integer, pari, gcd, LCM, prod
 from sage.misc.cachefunc import cached_method
 from sage.groups.abelian_gps.abelian_group import AbelianGroup_class
 from sage.groups.abelian_gps.abelian_group_element import AbelianGroupElement
 from sage.groups.abelian_gps.dual_abelian_group import DualAbelianGroup_class, DualAbelianGroupElement
+
 
 class RayClassGroup(AbelianGroup_class):
     def __init__(self, number_field, mod_ideal = 1, mod_archimedean = None):
@@ -52,7 +51,7 @@ class RayClassGroup(AbelianGroup_class):
     def _element_constructor_(self, *args, **kwargs):
         try:
             return AbelianGroupElement(args[0], self)
-        except:
+        except Exception:
             I = self.__number_field.ideal(*args, **kwargs)
             return AbelianGroupElement(self, self.log(I))
 
@@ -61,18 +60,18 @@ class RayClassGroup(AbelianGroup_class):
         return HeckeCharGroup(self, base_ring)
 
     def __str__(self):
-      return "Ray class group of modulus %s over %s" \
-           %(self.modulus(),self.__number_field)
+        return "Ray class group of modulus %s over %s" \
+            % (self.modulus(), self.__number_field)
 
     def __repr__(self):
-      return self.__str__()
+        return self.__str__()
 
     def gen_ideals(self):
         return self.__generators
 
-    def exp(self,x):
+    def exp(self, x):
         gens = self.gen_ideals()
-        return prod( g**e for g,e in zip(gens,x) )
+        return prod(g**e for g, e in zip(gens, x))
 
     def lift(self, x):
         return self.exp(x.exponents())
@@ -142,13 +141,14 @@ class HeckeChar(DualAbelianGroupElement):
     def logvalue(self, x):
         try:
             E = self.parent().group()(x)
-        except:
+        except Exception:
             return None
         E = E.exponents()
         F = self.exponents()
         D = self.parent().gens_orders()
         r = sum( e*f/d for e,f,d in zip( E, F, D) )
-        if isinstance(r, (int,Integer)): return 0
+        if isinstance(r, (int,Integer)):
+            return 0
         n,d = r.numerator(), r.denominator()
         return n%d/d
 
@@ -160,7 +160,7 @@ class HeckeChar(DualAbelianGroupElement):
     def __call__(self, x):
         try:
             logx = self.parent().group()(x)
-        except:
+        except Exception:
             return 0
         return DualAbelianGroupElement.__call__(self,logx)
 
@@ -173,12 +173,13 @@ class HeckeChar(DualAbelianGroupElement):
             if F[i] == D[i]:
                 F[i] = 0
                 i -= 1
-                if i < 0: return None
+                if i < 0:
+                    return None
             else:
                 c = HeckeChar(self.parent(), F)
                 if not only_primitive or c.is_primitive():
                     return c
-               
+
     def prev_character(self, only_primitive=False):
         D = self.parent().gens_orders()
         F = list(self.exponents())
@@ -188,7 +189,8 @@ class HeckeChar(DualAbelianGroupElement):
             if F[i] < 0:
                 F[i] = D[i] - 1
                 i -= 1
-                if i < 0: return None
+                if i < 0:
+                    return None
             else:
                 c = HeckeChar(self.parent(), F)
                 if not only_primitive or c.is_primitive():

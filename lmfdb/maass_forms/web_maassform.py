@@ -36,9 +36,8 @@ class WebMaassForm(object):
 
     @staticmethod
     def by_label(label):
-        try:
-            data = db.maass_newforms.lookup(label)
-        except AttributeError:
+        data = db.maass_newforms.lookup(label)
+        if data is None:
             raise KeyError("Maass newform %s not found in database."%(label))
         return WebMaassForm(data)
 
@@ -60,7 +59,7 @@ class WebMaassForm(object):
         query = {'level':self.level,  'weight': self.weight, 'conrey_index':self.conrey_index, 'spectral_parameter': self.spectral_parameter, 'maass_id': {'$gt':self.maass_id}}
         forms = db.maass_newforms.esearch(query, sort=["maass_id"], projection='maass_id', limit=1)
         if forms:
-            return forms[0];
+            return forms[0]
         query = {'level':self.level,  'weight': self.weight, 'conrey_index':self.conrey_index, 'spectral_parameter': {'$gt': self.spectral_parameter}}
         forms = db.maass_forms.search(query, sort=["spectral_parameter","maass_id"], projection='maass_id', limit=1)
         return forms[0] if forms else None
@@ -70,7 +69,7 @@ class WebMaassForm(object):
         query = {'level':self.level,  'weight': self.weight, 'conrey_index':self.conrey_index, 'spectral_parameter': self.spectral_parameter, 'maass_id': {'$lt':self.maass_id}}
         forms = db.maass_newforms.esearch(query, sort=["maass_id"], projection='maass_id', limit=1)
         if forms:
-            return forms[0];
+            return forms[0]
         query = {'level':self.level,  'weight': self.weight, 'conrey_index':self.conrey_index, 'spectral_parameter': {'$lt': self.spectral_parameter}}
         forms = db.maass_forms.search(query, sort=["spectral_parameter","maass_id"], projection='maass_id', limit=1)
         return forms[0] if forms else None
@@ -128,6 +127,7 @@ class WebMaassForm(object):
     def downloads(self):
         return [("Coefficients to text", url_for (".download_coefficients", label=self.label)),
                 ("All stored data to text", url_for (".download", label=self.label)),
+                ("Underlying data", url_for(".maass_data", label=self.label)),
                 ]
 
     @property

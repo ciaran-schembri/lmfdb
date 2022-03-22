@@ -6,7 +6,7 @@
 import ast
 import os
 import re
-from six import BytesIO
+from io import BytesIO
 import yaml
 
 from lmfdb.logger import make_logger
@@ -18,9 +18,11 @@ from lmfdb.utils import (
     flash_error, to_dict,
     SearchArray, TextBox, ExcludeOnlyBox, CountBox,
     parse_ints, clean_input, parse_bracketed_posints, parse_gap_id,
-    search_wrap)
+    search_wrap, redirect_no_cache)
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.utils.search_parsing import (search_parser, collapse_ors)
+from lmfdb.utils.search_columns import SearchColumns, LinkCol, MathCol, ProcessedCol
+from lmfdb.api import datapage
 from lmfdb.sato_tate_groups.main import sg_pretty
 from lmfdb.higher_genus_w_automorphisms import higher_genus_w_automorphisms_page
 from lmfdb.higher_genus_w_automorphisms.hgcwa_stats import HGCWAstats
@@ -59,10 +61,6 @@ def split_passport_label(lab):
 def split_vector_label(lab):
     return vector_label_regex.match(lab).groups()
 
-
-credit = 'Jen Paulhus, using group and signature data originally computed by Thomas Breuer'
-
-
 def get_bread(tail=[]):
     base = [("Higher genus", url_for(".index")),
             ("C", url_for(".index")),
@@ -71,22 +69,22 @@ def get_bread(tail=[]):
         tail = [(tail, " ")]
     return base + tail
 
+
 def learnmore_list():
-    return [('Completeness of the data', url_for(".completeness_page")),
-            ('Source of the data', url_for(".how_computed_page")),
+    return [('Source and acknowledgments', url_for(".how_computed_page")),
+            ('Completeness of the data', url_for(".completeness_page")),
             ('Reliability of the data', url_for(".reliability_page")),
             ('Labeling convention', url_for(".labels_page"))]
+
 
 # Return the learnmore list with the matchstring entry removed
 def learnmore_list_remove(matchstring):
     return [t for t in learnmore_list() if t[0].find(matchstring) < 0]
 
 
-def tfTOyn(bool):
-    if bool:
-        return "yes"
-    else:
-        return "no"
+def tfTOyn(b: bool):
+    return "yes" if b else "no"
+
 
 # Convert [4,1] to 4.1, then  apply sg_pretty
 def group_display(strg):
@@ -182,15 +180,15 @@ def index():
     return render_template("hgcwa-index.html",
                            title="Families of higher genus curves with automorphisms",
                            bread=bread,
-                           credit=credit,
                            info=info,
                            learnmore=learnmore_list())
 
 
 @higher_genus_w_automorphisms_page.route("/random")
+@redirect_no_cache
 def random_passport():
     label = db.hgcwa_passports.random(projection='passport_label')
-    return redirect(url_for(".by_passport_label", passport_label=label))
+    return url_for(".by_passport_label", passport_label=label)
 
 @higher_genus_w_automorphisms_page.route("/interesting")
 def interesting():
@@ -201,7 +199,6 @@ def interesting():
         label_col="label",
         title=r"Some interesting higher genus families",
         bread=get_bread("Interesting"),
-        credit=credit,
         learnmore=learnmore_list()
     )
 
@@ -209,7 +206,7 @@ def interesting():
 def statistics():
     title = 'Families of higher genus curves with automorphisms: Statistics'
     bread = get_bread('Statistics')
-    return render_template("hgcwa-stats.html", info=HGCWAstats(), credit=credit, title=title, learnmore=learnmore_list(), bread=bread)
+    return render_template("hgcwa-stats.html", info=HGCWAstats(), title=title, learnmore=learnmore_list(), bread=bread)
 
 
 @higher_genus_w_automorphisms_page.route("/stats/groups_per_genus/<int:genus>")
@@ -258,7 +255,6 @@ def groups_per_genus(genus):
 
     return render_template("hgcwa-stats-groups-per-genus.html",
                            info=info,
-                           credit=credit,
                            title=title,
                            learnmore=learnmore_list(),
                            bread=bread)
@@ -530,7 +526,7 @@ def parse_range2_extend(arg, key, parse_singleton=int, parse_endpoint=None, inst
         return ['$or', ret]
     elif 'g' in arg: # linear function of variable g (ax+b)
         if GENUS_RE.match(arg):
-            a = GENUS_RE.match(arg).groups()[0]    
+            a = GENUS_RE.match(arg).groups()[0]
             genus_list = db.hgcwa_passports.distinct('genus')
             genus_list.sort()
             min_genus = genus_list[0]
@@ -545,13 +541,13 @@ def parse_range2_extend(arg, key, parse_singleton=int, parse_endpoint=None, inst
                     elif '-' in arg: #a(g-b)
                         group_order = int(a)*(g-b)
                 else:
-                    if '+' in arg: 
+                    if '+' in arg:
                         b = int(GENUS_RE.match(arg).groups()[4])
                         if a == '': #g+b
                             group_order = g+b
                         else: #ag+b
                             group_order = int(a)*g+b
-                    elif '-' in arg: 
+                    elif '-' in arg:
                         b = int(GENUS_RE.match(arg).groups()[4])
                         if a == '': #g-b
                             group_order = g-b
@@ -564,7 +560,7 @@ def parse_range2_extend(arg, key, parse_singleton=int, parse_endpoint=None, inst
 
                 queries.append((group_order, g))
 
-            if instance == 1: #If there is only one linear function 
+            if instance == 1: #If there is only one linear function
                 return ['$or', [{key: gp_ord, 'genus': g} for (gp_ord,g) in queries]]
             else:
                 return [[key, gp_ord, g] for (gp_ord,g) in queries] #Nested list
@@ -575,7 +571,7 @@ def parse_range2_extend(arg, key, parse_singleton=int, parse_endpoint=None, inst
                     a linear function of variable g for genus \
                     (such as 84(g-1), 84g-84, 84g, or g-1), \
                     or a comma-separated list of these (such as 4,9,16 or 4-25, 81-121).")
-            
+
     elif '-' in arg and 'g' not in arg:
         ix = arg.index('-', 1)
         start, end = arg[:ix], arg[ix + 1:]
@@ -599,24 +595,35 @@ def parse_group_order(inp, query, qfield, parse_singleton=int):
                     a linear function of variable g for genus (such as 84(g-1), 84g-84, 84g, or g-1), \
                     or a comma-separated list of these (such as 4,9,16 or 4-25, 81-121).")
 
-@search_wrap(template="hgcwa-search.html",
-        table=db.hgcwa_passports,
-        title='Family of higher genus curves with automorphisms search results',
-        err_title='Family of higher genus curves with automorphisms search input error',
-        per_page=50,
-        url_for_label=url_for_label,
-        random_projection="passport_label",
-        shortcuts={'jump': higher_genus_w_automorphisms_jump,
-            'download': hgcwa_code_download_search },
-        cleaners={'signature': lambda field: ast.literal_eval(field['signature'])},
-        bread=lambda: get_bread("Search results"),
-        learnmore=learnmore_list,
-        credit=lambda: credit)
+hgcwa_columns = SearchColumns([
+    LinkCol("passport_label", "dq.curve.highergenus.aut.label", "Refined passport label",
+            lambda label: f"/HigherGenus/C/Aut/{label}",
+            default=True),
+    MathCol("genus", "ag.curve.genus", "Genus", default=True),
+    MathCol("g0", "curve.highergenus.aut.quotientgenus", "Quotient genus"),
+    ProcessedCol("group", "group.small_group_label", "Group", group_display, mathmode=True, align="center", default=True),
+    MathCol("group_order", "group.order", "Group order", default=True),
+    MathCol("dim", "curve.highergenus.aut.dimension", "Dimension", default=True),
+    ProcessedCol("signature", "curve.highergenus.aut.signature", "Signature", lambda sig: sign_display(ast.literal_eval(sig)), default=True, mathmode=True)])
+hgcwa_columns.languages = ['gap', 'magma']
+
+@search_wrap(
+    table=db.hgcwa_passports,
+    title='Family of higher genus curves with automorphisms search results',
+    err_title='Family of higher genus curves with automorphisms search input error',
+    columns=hgcwa_columns,
+    per_page=50,
+    url_for_label=url_for_label,
+    random_projection="passport_label",
+    shortcuts={'jump': higher_genus_w_automorphisms_jump,
+               'download': hgcwa_code_download_search },
+    bread=lambda: get_bread("Search results"),
+    learnmore=learnmore_list)
 def higher_genus_w_automorphisms_search(info, query):
     if info.get('signature'):
         # allow for ; in signature
         info['signature'] = info['signature'].replace(';',',')
-        parse_bracketed_posints(info,query,'signature',split=False,name='Signature',keepbrackets=True)
+        parse_bracketed_posints(info,query,'signature',split=False,name='Signature',keepbrackets=True, allow0=True)
         if query.get('signature'):
             query['signature'] = info['signature'] = str(sort_sign(ast.literal_eval(query['signature']))).replace(' ','')
     parse_gap_id(info,query,'group',qfield='group')
@@ -645,28 +652,6 @@ def higher_genus_w_automorphisms_search(info, query):
 
     info['group_display'] = group_display
     info['sign_display'] = sign_display
-
-    if 'sort_order' in info:
-        if info['sort_order'] == '':
-            query['__sort__'] = ['genus', 'group_order', 'g0','dim']
-        elif info['sort_order'] == 'descgenus':
-            query['__sort__'] = [('genus',-1), 'group_order', 'g0', 'dim']
-        elif info['sort_order'] == 'g0':
-            query['__sort__'] = ['g0', 'genus', 'group_order', 'dim']
-        elif info['sort_order'] == 'descg0':
-            query['__sort__'] = [('g0',-1), 'genus', 'group_order', 'dim']
-        elif info.get('sort_order') == 'dim':
-            query['__sort__'] = ['dim', 'genus', 'group_order', 'g0']
-        elif info.get('sort_order') == 'descdim':
-            query['__sort__'] = [('dim',-1), 'genus', 'group_order', 'g0']
-        elif info.get('sort_order') == 'group_order':
-            query['__sort__'] = ['group_order', 'genus', 'g0', 'dim']
-        elif info.get('sort_order') == 'descgroup_order':
-            query['__sort__'] = [('group_order',-1), 'genus', 'g0', 'dim']
-
-    else:
-        query['__sort__'] = ['genus', 'group_order',  'g0', 'dim']
-
 
 
 def render_family(args):
@@ -746,7 +731,7 @@ def render_family(args):
 
         g2List = ['[2,1]', '[4,2]', '[8,3]', '[10,2]', '[12,4]', '[24,8]', '[48,29]']
         if g == 2 and data['group'] in g2List:
-            g2url = "/Genus2Curve/Q/?geom_aut_grp_id=" + data['group']
+            g2url = "/Genus2Curve/Q/?geom_aut_grp_label=" + ".".join(data['group'][1:-1].split(','))
             friends = [(r"Genus 2 curves over $\Q$", g2url)]
         else:
             friends = []
@@ -764,21 +749,33 @@ def render_family(args):
 
         if len(Ltopo_rep) == 0 or len(dataz) == 1:
             downloads = [('Code to Magma', url_for(".hgcwa_code_download", label=label, download_type='magma')),
-                             ('Code to Gap', url_for(".hgcwa_code_download", label=label, download_type='gap'))]
+                         ('Code to Gap', url_for(".hgcwa_code_download", label=label, download_type='gap'))]
         else:
             downloads = [('Code to Magma', None),
-                             (u'\u2003 All vectors', url_for(".hgcwa_code_download",  label=label, download_type='magma')),
-                             (u'\u2003 Up to topological equivalence', url_for(".hgcwa_code_download", label=label, download_type='topo_magma')),
-                             ('Code to Gap', None),
-                             (u'\u2003 All vectors', url_for(".hgcwa_code_download",  label=label, download_type='gap')),
-                             (u'\u2003 Up to topological equivalence', url_for(".hgcwa_code_download", label=label, download_type='topo_gap'))] 
-
+                         (u'\u2003 All vectors', url_for(".hgcwa_code_download",  label=label, download_type='magma')),
+                         (u'\u2003 Up to topological equivalence', url_for(".hgcwa_code_download", label=label, download_type='topo_magma')),
+                         ('Code to Gap', None),
+                         (u'\u2003 All vectors', url_for(".hgcwa_code_download",  label=label, download_type='gap')),
+                         (u'\u2003 Up to topological equivalence', url_for(".hgcwa_code_download", label=label, download_type='topo_gap'))]
+        downloads.append(('Underlying data', url_for(".hgcwa_data", label=label)))
         return render_template("hgcwa-show-family.html",
                                title=title, bread=bread, info=info,
                                properties=prop2, friends=friends,
                                KNOWL_ID="curve.highergenus.aut.%s" % label,
-                               learnmore=learnmore_list(), downloads=downloads, credit=credit)
+                               learnmore=learnmore_list(), downloads=downloads)
 
+@higher_genus_w_automorphisms_page.route("/data/<label>")
+def hgcwa_data(label):
+    if label_is_one_family(label):
+        label_col = "label"
+        title = f"Higher genus family - {label}"
+    elif label_is_one_passport(label):
+        label_col = "passport_label"
+        title = f"Higher genus passport - {label}"
+    else:
+        return abort(404, f"Invalid label {label}")
+    bread = get_bread([(label, url_for_label(label)), ("Data", " ")])
+    return datapage(label, "hgcwa_passports", title=title, bread=bread, label_cols=[label_col])
 
 def render_passport(args):
     info = {}
@@ -809,7 +806,7 @@ def render_passport(args):
         try:
             numgenvecs = int(request.args['numgenvecs'])
             numbraidreps = int(request.args['numbraidreps'])
-        except:
+        except Exception:
             numgenvecs = 20
             numbraidreps = 20
 
@@ -962,7 +959,7 @@ def render_passport(args):
         if numb == 1 or braid_length == 0:
             downloads = [('Code to Magma', url_for(".hgcwa_code_download",  label=label, download_type='magma')),
                      ('Code to Gap', url_for(".hgcwa_code_download", label=label, download_type='gap'))]
-            
+
         else:
             downloads = [('Code to Magma', None),
                              (u'\u2003 All vectors', url_for(".hgcwa_code_download",  label=label, download_type='magma')),
@@ -970,25 +967,39 @@ def render_passport(args):
                              ('Code to Gap', None),
                              (u'\u2003 All vectors', url_for(".hgcwa_code_download", label=label, download_type='gap')),
                              (u'\u2003 Up to braid equivalence', url_for(".hgcwa_code_download", label=label, download_type='braid_gap'))]
+        downloads.append(('Underlying data', url_for(".hgcwa_data", label=label)))
 
 
         return render_template("hgcwa-show-passport.html",
                                title=title, bread=bread, info=info,
                                properties=prop2, friends=friends,
                                learnmore=learnmore_list(), downloads=downloads,
-                               KNOWL_ID="curve.highergenus.aut.%s" % label,
-                               credit=credit)
+                               KNOWL_ID="curve.highergenus.aut.%s" % label)
 
 
-#Generate topological webpage
-@higher_genus_w_automorphisms_page.route("/<fam>/<cc>") 
+# Generate topological webpage
+@higher_genus_w_automorphisms_page.route("/<fam>/<cc>")
 def topological_action(fam, cc):
-    br_g, br_gp, br_sign = split_family_label(fam)
-    cc_list = cc_to_list(cc)
+
+    try:
+        br_g, br_gp, br_sign = split_family_label(fam)
+    except AttributeError:
+        flash_error("Invalid family label: %s", fam)
+        return redirect(url_for(".index"))
+
+    try:
+        cc_list = cc_to_list(cc)
+    except IndexError:
+        flash_error("Invalid topological action label: %s", cc)
+        return redirect(url_for(".index"))
+
     representative = fam + '.' + cc[2:]
 
-     #Get the equivalence class
+    # Get the equivalence class
     topo_class = list(db.hgcwa_passports.search({'label': fam, 'topological': cc_list}))
+    if not topo_class:
+        flash_error("No orbit in family with label %s and topological action %s was found in the database.", fam, cc)
+        return redirect(url_for(".index"))
 
     GG = ast.literal_eval(topo_class[0]['group'])
     gn = GG[0]
@@ -1016,18 +1027,18 @@ def topological_action(fam, cc):
     Lbraid = {}
 
     for element in topo_class:
-       if str(element['braid']) in Lbraid:
-           Lbraid[str(element['braid'])].append(
-               (element['passport_label'],
-                element['total_label'],
-                ' '))
-           # We include the space so that we don't have duplicate conjugacy
-           # classes displayed
-       else:
-           Lbraid[str(element['braid'])] = [
-               (element['passport_label'],
-                element['total_label'],
-                cc_display(ast.literal_eval(element['con'])))]
+        if str(element['braid']) in Lbraid:
+            Lbraid[str(element['braid'])].append(
+                (element['passport_label'],
+                 element['total_label'],
+                 ' '))
+            # We include the space so that we don't have duplicate conjugacy
+            # classes displayed
+        else:
+            Lbraid[str(element['braid'])] = [
+                (element['passport_label'],
+                 element['total_label'],
+                 cc_display(ast.literal_eval(element['con'])))]
 
     # Sort braid ascending
     key_for_sorted = sorted(ast.literal_eval(key) for key in Lbraid)
@@ -1035,23 +1046,17 @@ def topological_action(fam, cc):
 
     info = {'topological_class': sorted_braid, 'representative': representative, 'braid_num': len(Lbraid)}
 
-    return render_template("hgcwa-topological-action.html", info=info, credit=credit, title=title, bread=bread, downloads=downloads)
-
-
-def search_input_error(info, bread):
-    return render_template("hgcwa-search.html", info=info, title='Family of higher genus curves with automorphisms search input error', learnmore=learnmore_list(),bread=bread, credit=credit)
-
+    return render_template("hgcwa-topological-action.html", info=info, title=title, bread=bread, downloads=downloads)
 
 
 @higher_genus_w_automorphisms_page.route("/Completeness")
 def completeness_page():
     t = 'Completeness of higher genus curve with automorphisms data'
     bread = get_bread("Completeness")
-    return render_template("single.html", kid='dq.curve.highergenus.aut.extent',
+    return render_template("single.html", kid='rcs.cande.curve.highergenus.aut',
                            title=t,
                            bread=bread,
-                           learnmore=learnmore_list_remove('Completeness'),
-                           credit=credit)
+                           learnmore=learnmore_list_remove('Completeness'))
 
 
 @higher_genus_w_automorphisms_page.route("/Labels")
@@ -1061,8 +1066,7 @@ def labels_page():
     return render_template("single.html", kid='dq.curve.highergenus.aut.label',
                            learnmore=learnmore_list_remove('Label'),
                            title=t,
-                           bread=bread,
-                           credit=credit)
+                           bread=bread)
 
 
 @higher_genus_w_automorphisms_page.route("/Reliability")
@@ -1070,23 +1074,23 @@ def reliability_page():
     t = 'Reliability of higher genus curve with automorphisms data'
     bread = get_bread("Reliability")
     return render_template("single.html",
-                           kid='dq.curve.highergenus.aut.reliability',
+                           kid='rcs.rigor.curve.highergenus.aut',
                            title=t,
                            bread=bread,
-                           learnmore=learnmore_list_remove('Reliability'),
-                           credit=credit)
+                           learnmore=learnmore_list_remove('Reliability'))
 
 
 @higher_genus_w_automorphisms_page.route("/Source")
 def how_computed_page():
     t = 'Source of higher genus curve with automorphisms data'
     bread = get_bread("Source")
-    return render_template("single.html",
-                           kid='dq.curve.highergenus.aut.source',
+    return render_template("multi.html",
+                           kids=['rcs.source.curve.highergenus.aut',
+                                 'rcs.ack.curve.highergenus.aut',
+                                 'rcs.cite.curve.highergenus.aut'],
                            title=t,
                            bread=bread,
-                           learnmore=learnmore_list_remove('Source'),
-                           credit=credit)
+                           learnmore=learnmore_list_remove('Source'))
 
 
 
@@ -1189,7 +1193,7 @@ def hgcwa_code_download(**args):
 
     if args['download_type'] == 'rep_magma' or args['download_type'] == 'rep_gap':
         stdfmt += code_list['braid_class'][lang] + '{braid}' + ';\n'
-    
+
     # extended formatting template for when signH is present
     signHfmt = stdfmt
     signHfmt += code_list['full_auto'][lang] + '{full_auto}' + ';\n'
@@ -1307,13 +1311,7 @@ class HGCWASearchArray(SearchArray):
             [g0, signature, group, inc_cyc_trig]]
 
     sort_knowl = "curve.highergenus.aut.sort_order"
-    def sort_order(self, info):
-        return [("", "genus"),
-                ("g0", "quotient genus"),
-                ("group_order", "group order"),
-                ("dim", "dimension"),
-                ("descgenus", "genus descending"),
-                ("descg0", "quotient genus descending"),
-                ("descgroup_order", "group order descending"),
-                ("descdim", "dimension descending")]
-
+    sorts = [("", "genus", ['genus', 'group_order',  'g0', 'dim']),
+             ("g0", "quotient genus", ['g0', 'genus', 'group_order', 'dim']),
+             ("group_order", "group order", ['group_order', 'group', 'genus', 'g0', 'dim']),
+             ("dim", "dimension", ['dim', 'genus', 'group_order', 'g0'])]

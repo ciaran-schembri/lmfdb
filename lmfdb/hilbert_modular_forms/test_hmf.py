@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
+
 from lmfdb.tests import LmfdbTest
 
 class HMFTest(LmfdbTest):
@@ -21,7 +21,7 @@ class HMFTest(LmfdbTest):
         assert 'EllipticCurve/5.5.126032.1/82.1/b/' in L.get_data(as_text=True)
 
         L = self.tc.get('/ModularForm/GL2/TotallyReal/2.2.89.1/holomorphic/2.2.89.1-2.1-a')
-        assert 'Isogeny class' in L.get_data(as_text=True)
+        assert 'Elliptic curve' in L.get_data(as_text=True)
         assert 'EllipticCurve/2.2.89.1/2.1/a' in L.get_data(as_text=True)
 
     def test_typo(self): #771
@@ -80,7 +80,7 @@ class HMFTest(LmfdbTest):
 
     def test_Lfun_link(self):
         L = self.tc.get('/ModularForm/GL2/TotallyReal/2.2.5.1/holomorphic/2.2.5.1-31.1-a')
-        assert         'L/ModularForm/GL2/TotallyReal/2.2.5.1/holomorphic/2.2.5.1-31.1-a' in L.get_data(as_text=True)
+        assert 'L/ModularForm/GL2/TotallyReal/2.2.5.1/holomorphic/2.2.5.1-31.1-a' in L.get_data(as_text=True)
 
     def test_browse(self):
         L = self.tc.get('/ModularForm/GL2/TotallyReal/browse/')
@@ -104,24 +104,24 @@ class HMFTest(LmfdbTest):
         for url, texts, notitself in [
                 ('/ModularForm/GL2/TotallyReal/2.2.5.1/holomorphic/2.2.5.1-31.1-a',
                     ('Hilbert modular form 2.2.5.1-31.2-a',
-                        'Isogeny class 2.2.5.1-31.1-a',
-                        'Isogeny class 2.2.5.1-31.2-a'),
+                        'Elliptic curve 2.2.5.1-31.1-a',
+                        'Elliptic curve 2.2.5.1-31.2-a'),
                     'Hilbert modular form 2.2.5.1-31.1-a'),
                 ('/ModularForm/GL2/TotallyReal/2.2.5.1/holomorphic/2.2.5.1-31.2-a',
                     ('Hilbert modular form 2.2.5.1-31.1-a',
-                        'Isogeny class 2.2.5.1-31.1-a',
-                        'Isogeny class 2.2.5.1-31.2-a'),
+                        'Elliptic curve 2.2.5.1-31.1-a',
+                        'Elliptic curve 2.2.5.1-31.2-a'),
                     'Hilbert modular form 2.2.5.1-31.2-a'),
                 ('/ModularForm/GL2/TotallyReal/2.2.497.1/holomorphic/2.2.497.1-1.1-a',
-                    ('Isogeny class 2.0.7.1-5041.1-CMa',
-                        'Isogeny class 2.0.7.1-5041.3-CMa',
-                        'Isogeny class 2.2.497.1-1.1-a',
+                    ('Elliptic curve 2.0.7.1-5041.1-CMa',
+                        'Elliptic curve 2.0.7.1-5041.3-CMa',
+                        'Elliptic curve 2.2.497.1-1.1-a',
                         'Modular form 497.2.b.a'),
                     'Hilbert modular form 2.2.497.1-1.1-a'),
                 ('/ModularForm/GL2/TotallyReal/2.2.8.1/holomorphic/2.2.8.1-32.1-a',
                     ('Bianchi modular form 2.0.8.1-32.1-a',
-                        'Isogeny class 2.0.8.1-32.1-a',
-                        'Isogeny class 2.2.8.1-32.1-a'),
+                        'Elliptic curve 2.0.8.1-32.1-a',
+                        'Elliptic curve 2.2.8.1-32.1-a'),
                     'Hilbert modular form 2.2.8.1-32.1-a')
                 ]:
             L = self.tc.get(url)
@@ -143,9 +143,7 @@ class HMFTest(LmfdbTest):
         page = self.tc.get('ModularForm/GL2/TotallyReal/3.3.837.1/holomorphic/3.3.837.1-48.3-z/download/magma').get_data(as_text=True)
         assert 'No such form' in page
 
-        # These tests take too long to use magma_free, so we run magma when it is installed
-        from sage.all import magma
-        import sys
+        # We run the following tests when magma is installed
         for field, label, expected in [
                 ['2.2.28.1', '2.2.28.1-531.1-m',
                  'heckeEigenvaluesArray := [e, -1, -1, e^7 - 1/2*e^6 - 10*e^5 + 11/2*e^4 + 27*e^3 - 15*e^2 - 15*e + 4'],
@@ -154,21 +152,18 @@ class HMFTest(LmfdbTest):
                 ['4.4.725.1', '4.4.725.1-31.1-a',
                  'heckeEigenvaluesArray := [4, -4, -7, -4, 4, 2, -2, -1, -8, 2, 10']
         ]:
-            sys.stdout.write("{}...".format(label))
-            sys.stdout.flush()
             page = self.tc.get('/ModularForm/GL2/TotallyReal/{}/holomorphic/{}/download/magma'.format(field, label)).get_data(as_text=True)
             assert expected in page
-            assert  'make_newform'  in page
+            assert 'make_newform' in page
 
             magma_code = page + '\n'
             magma_code += 'f, iso := Explode(make_newform());\n'
             magma_code += 'assert(&and([iso(heckeEigenvalues[P]) eq HeckeEigenvalue(f,P): P in primes[1..10]]));\n'
             magma_code += 'f;\n'
+            self.assert_if_magma('success', magma_code, mode='in')
 
-            try:
-                assert 'success' in magma.eval(magma_code)
-            except RuntimeError as the_error:
-                if str(the_error).startswith("unable to start magma"):
-                    pass
-                else:
-                    raise
+    def test_underlying_data(self):
+        data = self.tc.get('/ModularForm/GL2/TotallyReal/data/2.2.5.1-31.1-a').get_data(as_text=True)
+        assert ('hmf_forms' in data and 'level_bad_primes' in data and
+                'hmf_hecke' in data and 'AL_eigenvalues' in data and
+                'hmf_fields' in data and 'ideals' in data)

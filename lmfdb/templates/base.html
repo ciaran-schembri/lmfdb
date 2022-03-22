@@ -38,6 +38,8 @@
     <script type="text/javascript" src="{{ url_for('static', filename='jquery.dataTables.plugins.js') }}"></script>
 
     <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='raw_typeset.js') }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='notify.min.js') }}"></script>
 
 
     <link rel="stylesheet"
@@ -73,10 +75,19 @@ katexOpts = {
   "\\GL": '{\\textrm{GL}}',
   "\\PSL": '{\\textrm{PSL}}',
   "\\PGL": '{\\textrm{PGL}}',
+  "\\ASL": '{\\textrm{ASL}}',
+  "\\AGL": '{\\textrm{AGL}}',
   "\\Sp": '{\\textrm{Sp}}',
   "\\GSp": '{\\textrm{GSp}}',
   "\\PSp": '{\\textrm{PSp}}',
+  "\\SO": '{\\textrm{SO}}',
+  "\\PSO": '{\\textrm{PSO}}',
+  "\\PGO": '{\\textrm{PGO}}',
+  "\\SU": '{\\textrm{SU}}',
   "\\PSU": '{\\textrm{PSU}}',
+  "\\SD": '{\\textrm{SD}}',
+  "\\OD": '{\\textrm{OD}}',
+  "\\He": '{\\textrm{He}}',
   "\\Gal": '{\\mathop{\\rm Gal}}',
   "\\Aut": '{\\mathop{\\rm Aut}}',
   "\\Sym": '{\\mathop{\\rm Sym}}',
@@ -90,6 +101,7 @@ katexOpts = {
   "\\ideal": '{\\mathfrak{ #1 }}',
   "\\classgroup": '{Cl(#1)}',
   "\\modstar": '{\\left( #1/#2 \\right)^\\times}',
+  "\\card": '{\\# #1}',
 },
 };
   document.addEventListener("DOMContentLoaded", function() {
@@ -105,6 +117,7 @@ katexOpts = {
     {%- from "knowl-defs.html" import KNOWL_LINK with context -%}
     {%- from "knowl-defs.html" import KNOWL_INC with context -%}
     {%- from "knowl-defs.html" import TEXT_DATA with context -%}
+    {%- from "knowl-defs.html" import LINK_EXT with context -%}
 
     <script type="text/javascript">
 var _gaq = _gaq || [];

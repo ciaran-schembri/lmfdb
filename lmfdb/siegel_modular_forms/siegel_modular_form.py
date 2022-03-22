@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 # Author: Nils Skoruppa <nils.skoruppa@gmail.com>
-
-from __future__ import absolute_import
-from six import BytesIO
+from io import BytesIO
 
 from flask import render_template, url_for, request, send_file, redirect
 from sage.all import latex, Set
@@ -17,6 +15,7 @@ from lmfdb.siegel_modular_forms import smf_page
 from lmfdb.siegel_modular_forms.family import get_smf_family, get_smf_families
 from . import dimensions
 from . import sample
+from lmfdb.utils import redirect_no_cache
 
 ###############################################################################
 # Utility functions
@@ -55,8 +54,9 @@ def index():
     return render_main_page(bread)
 
 @smf_page.route("/random")
+@redirect_no_cache
 def random_sample():
-    return redirect(url_for('.by_label', label='.'.join(sample.random_sample_name())), 307)
+    return url_for('.by_label', label='.'.join(sample.random_sample_name()))
 
 @smf_page.route('/<label>')
 @smf_page.route('/<label>/')
@@ -152,7 +152,7 @@ def Sp4Z_j():
 
 def render_main_page(bread):
     fams = get_smf_families()
-    fam_list = [c for c in fams if c.computes_dimensions() and not c.name in ["Sp4Z","Sp4Z_2"]] # Sp4Z and Sp4Z_2 are sub-families of Sp4Z_j
+    fam_list = [c for c in fams if c.computes_dimensions() and c.name not in ["Sp4Z","Sp4Z_2"]] # Sp4Z and Sp4Z_2 are sub-families of Sp4Z_j
     info = { 'family_list': fam_list, 'args': {}, 'number_of_samples': db.smf_samples.count()}
     return render_template('ModularForm_GSp4_Q_index.html', title='Siegel modular forms', bread=bread, info=info)
 
@@ -210,8 +210,8 @@ def render_search_results_page(args, bread):
     info = { 'args': to_dict(args) }
     query = {}
     try:
-        parse_ints (info['args'], query, 'deg', 'degree')
-        parse_ints (info['args'], query, 'wt', '$k$')
+        parse_ints (info['args'], query, 'deg', 'degree', qfield="degree")
+        parse_ints (info['args'], query, 'wt', '$k$', qfield="weight")
         parse_ints (info['args'], query, 'fdeg', 'field degree')
     except ValueError:
         info['error'] = True
@@ -222,20 +222,20 @@ def render_search_results_page(args, bread):
 
 def render_dimension_table_page(args, bread):
     fams = get_smf_families()
-    fam_list = [c for c in fams if c.computes_dimensions() and not c.name in ["Sp4Z","Sp4Z_2"]] # Sp4Z and Sp4Z_2 are sub-families of Sp4Z_j
+    fam_list = [c for c in fams if c.computes_dimensions() and c.name not in ["Sp4Z","Sp4Z_2"]] # Sp4Z and Sp4Z_2 are sub-families of Sp4Z_j
     info = { 'family_list': fam_list, 'args': to_dict(args) }
     family = get_smf_family(args.get('family'))
     if not family:
-        flash_error("Space %s not found in databsae", args.get('family'))
+        flash_error("Space %s not found in database", args.get('family'))
     elif not family.computes_dimensions():
         flash_error("Dimension table not available for family %s.", args.get('family'))
     else:
         info['family'] = family
         if 'j' in family.latex_name:
             # if j is not specified (but could be) set it to zero for consistency (overrides defaults in json files)
-            if not 'j' in info['args'] or not info['args']['j']:
+            if 'j' not in info['args'] or not info['args']['j']:
                 info['args']['j'] = '0'
-        if not 'j' in family.latex_name and 'j' in info['args'] and  info['args']['j'] != '0':
+        if 'j' not in family.latex_name and 'j' in info['args'] and info['args']['j'] != '0':
             flash_error("$j$ = %s should not be specified for the selected space %s", info['args']['j'], '$'+family.latex_name+'$')
         else:
             build_dimension_table (info, family, info['args'])
@@ -276,12 +276,14 @@ def render_sample_page(family, sam, args, bread):
     except ValueError:
         evs_to_show = []
         fcs_to_show = []
-    info['evs_to_show'] = sorted([n for n in (evs_to_show if len(evs_to_show) else sam.available_eigenvalues()[:10])])
-    info['fcs_to_show'] = sorted([n for n in (fcs_to_show if len(fcs_to_show) else sam.available_Fourier_coefficients()[1:6])])
-    info['evs_avail'] = [n for n in sam.available_eigenvalues()]
-    info['fcs_avail'] = [n for n in sam.available_Fourier_coefficients()]
+    info['evs_to_show'] = sorted(evs_to_show if len(evs_to_show)
+                                 else sam.available_eigenvalues()[:10])
+    info['fcs_to_show'] = sorted(fcs_to_show if len(fcs_to_show)
+                                 else sam.available_Fourier_coefficients()[1:6])
+    info['evs_avail'] = list(sam.available_eigenvalues())
+    info['fcs_avail'] = list(sam.available_Fourier_coefficients())
 
-    # Do not attempt to constuct a modulus ideal unless the field has a reasonably small discriminant
+    # Do not attempt to construct a modulus ideal unless the field has a reasonably small discriminant
     # otherwise sage may not even be able to factor the discriminant
     info['field'] = sam.field()
     if info['field_poly'].disc() < 10**80:

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function, absolute_import
-import os, argparse
-from six.moves.configparser import ConfigParser
+import os
+import argparse
+from configparser import ConfigParser
 from collections import defaultdict
 from copy import deepcopy
+
 
 def strbool(s):
     """
@@ -16,13 +17,14 @@ def strbool(s):
     else:
         raise ValueError(s)
 
+
 class Configuration(object):
     """
     This configuration object merges input from the command line and a configuration file.
 
     If the configuration file does not exist, it can create it with values specified by the default command line arguments.  This allows a user to edit the configuration file to change the defaults.
 
-    Because of this dual approach, the types of all configuration values must be recoverable from their sting values.  Namely, each object x of type T must satisfy x == T(str(x)).  Strings, integers and floats all have this property.
+    Because of this dual approach, the types of all configuration values must be recoverable from their string values.  Namely, each object x of type T must satisfy x == T(str(x)).  Strings, integers and floats all have this property.
 
     INPUT:
 
@@ -36,8 +38,14 @@ class Configuration(object):
       - ``postgresql_user`` -- the username when connecting to the database
       - ``postgresql_password`` -- the password for connecting to the database
       - ``writeargstofile`` - a boolean, if config file doesn't exist, it determines if command line arguments are written to the config file instead of the default arguments
+      - ``readargs`` - a boolean, if determines if command line arguments are read
     """
-    def __init__(self, parser=None, defaults={}, writeargstofile=False, readargs=True):
+    def __init__(self, parser=None, defaults={}, writeargstofile=False, readargs=None):
+        if readargs is None:
+            import __main__ as main
+            # if a file was ran
+            readargs = hasattr(main, '__file__')
+
         if parser is None:
             parser = argparse.ArgumentParser(description="Default psycodict parser")
 
@@ -127,7 +135,7 @@ class Configuration(object):
             return sec, opt
 
         # 1: parsing command-line arguments
-        if  readargs:
+        if readargs:
             args = parser.parse_args()
         else:
             # only read config file
@@ -231,4 +239,3 @@ class Configuration(object):
         res = dict(self.default_args["postgresql"])
         res["port"] = int(res["port"])
         return res
-

@@ -2,7 +2,7 @@
 
 import ast
 import re
-from six import BytesIO
+from io import BytesIO
 import time
 
 from flask import abort, render_template, url_for, request, redirect, send_file
@@ -15,13 +15,17 @@ from lmfdb.utils import (
     to_dict, flash_error, integer_options, display_knowl, coeff_to_poly,
     SearchArray, TextBox, TextBoxWithSelect, SkipBox, CheckBox, CheckboxSpacer, YesNoBox,
     parse_ints, parse_string_start, parse_subset, parse_submultiset, parse_bool, parse_bool_unknown,
-    search_wrap, count_wrap, YesNoMaybeBox, CountBox, SubsetBox,
+    search_wrap, count_wrap, YesNoMaybeBox, CountBox, SubsetBox, SelectBox
 )
 from lmfdb.utils.interesting import interesting_knowls
+from lmfdb.api import datapage
 from . import abvarfq_page
 from .search_parsing import parse_newton_polygon, parse_nf_string, parse_galgrp
 from .isog_class import validate_label, AbvarFq_isoclass
 from .stats import AbvarFqStats
+from lmfdb.utils import redirect_no_cache
+from lmfdb.utils.search_columns import SearchColumns, SearchCol, MathCol, LinkCol
+from lmfdb.abvar.fq.download import AbvarFq_download
 
 logger = make_logger("abvarfq")
 
@@ -38,12 +42,10 @@ def get_bread(*breads):
         bc.append(z)
     return bc
 
-abvarfq_credit = "Taylor Dupuy, Kiran Kedlaya, David Roe, Christelle Vincent"
-
 def learnmore_list():
     return [
+        ("Source and acknowledgments", url_for(".how_computed_page")),
         ("Completeness of the data", url_for(".completeness_page")),
-        ("Source of the data", url_for(".how_computed_page")),
         ("Reliability of the data", url_for(".reliability_page")),
         ("Labeling convention", url_for(".labels_page")),
     ]
@@ -51,6 +53,20 @@ def learnmore_list():
 # Return the learnmore list with the matchstring entry removed
 def learnmore_list_remove(matchstring):
     return [t for t in learnmore_list() if t[0].find(matchstring) < 0]
+
+
+#########################
+#    Downloads
+#########################
+
+@abvarfq_page.route("/download_all/<label>")
+def download_all(label):
+    return AbvarFq_download().download_all(label)
+
+@abvarfq_page.route("/download_curves/<label>")
+def download_curves(label):
+    return AbvarFq_download().download_curves(label)
+
 
 #########################
 #  Search/navigate
@@ -109,10 +125,19 @@ def abelian_varieties_by_gqi(g, q, iso):
         (iso, url_for(".abelian_varieties_by_gqi", g=g, q=q, iso=iso))
     )
 
+    downloads = [
+        ('All stored data to text', url_for('.download_all', label=label))
+    ]
+
+    if hasattr(cl, "curves") and cl.curves:
+        downloads.append(('Curves to text', url_for('.download_curves', label=label)))
+    downloads.append(("Underlying data", url_for('.AV_data', label=label)))
+
     return render_template(
         "show-abvarfq.html",
         properties=cl.properties(),
-        credit=abvarfq_credit,
+        friends=cl.friends(),
+        downloads=downloads,
         title='Abelian variety isogeny class %s over $%s$'%(label, cl.field()),
         bread=bread,
         cl=cl,
@@ -177,13 +202,32 @@ def download_search(info):
     strIO.seek(0)
     return send_file(strIO, attachment_filename=filename, as_attachment=True, add_etags=False)
 
+@abvarfq_page.route("/data/<label>")
+def AV_data(label):
+    if not lmfdb_label_regex.fullmatch(label):
+        return abort(404, f"Invalid label {label}")
+    bread = get_bread((label, url_for_label(label)), ("Data", " "))
+    extension_labels = list(db.av_fq_endalg_factors.search({"base_label": label}, "extension_label", sort=["extension_degree"]))
+    tables = ["av_fq_isog", "av_fq_endalg_factors"] + ["av_fq_endalg_data"] * len(extension_labels)
+    labels = [label, label] + extension_labels
+    label_cols = ["label", "base_label"] + ["extension_label"] * len(extension_labels)
+    sorts = [[], ["extension_degree"]] + [[]] * len(extension_labels)
+    return datapage(labels, tables, title=f"Abelian variety isogeny class data - {label}", bread=bread, label_cols=label_cols, sorts=sorts)
+
 class AbvarSearchArray(SearchArray):
+    sorts = [("", "dimension", ['g', 'q', 'poly']),
+             ("q", "field", ['q', 'g', 'poly']),
+             ("p", "charactersitic", ['p', 'q', 'g', 'poly']),
+             ("p_rank", "p-rank", ['p_rank', 'g', 'q', 'poly']),
+             ("p_rank_deficit", "p-rank deficit", ['p_rank_deficit', 'g', 'q', 'poly']),
+             ("curve_count", "curve points", ['curve_count', 'g', 'q', 'poly']),
+             ("abvar_count", "abvar points", ['abvar_count', 'g', 'q', 'poly'])]
     jump_example = "2.16.am_cn"
     jump_egspan = "e.g. 2.16.am_cn or 1 - x + 2x^2 or x^2 - x + 2"
     jump_knowl = "av.fq.search_input"
     jump_prompt = "Label or polynomial"
     def __init__(self):
-        qshort = display_knowl("ag.base_field", "base field")
+        qshort = display_knowl("ag.base_field", "Base field")
         q = TextBox(
             "q",
             label="Cardinality of the %s" % (qshort),
@@ -354,6 +398,19 @@ class AbvarSearchArray(SearchArray):
             knowl="av.geometrically_simple",
             short_label="Geom. simple",
         )
+        geom_squarefree = SelectBox(
+            name="geom_squarefree",
+            knowl="av.geometrically_squarefree",
+            label="(Geometrically) Squarefree",
+            short_label="(Geom.) Sq.free",
+            options=[('', ''),
+            ('Yes', 'yes'),
+            ('YesAndGeom', 'yes; and geom.'),
+            ('YesNotGeom', 'yes; not geom.'),
+            ('No', 'no'),
+            ('NotGeom', 'not geom.')],
+            advanced=True
+        )
         primitive = YesNoBox(
             "primitive",
             label="Primitive",
@@ -363,7 +420,7 @@ class AbvarSearchArray(SearchArray):
             "polarizable",
             label="Principally polarizable",
             knowl="av.princ_polarizable",
-            short_label="Princ polarizable",
+            short_label="Princ. polarizable",
         )
         jacobian = YesNoMaybeBox(
             "jacobian",
@@ -468,11 +525,10 @@ class AbvarSearchArray(SearchArray):
 
         self.refine_array = [
             [q, p, g, p_rank, initial_coefficients],
+            [simple, geom_simple, primitive, polarizable, jacobian],
             [newton_polygon, abvar_point_count, curve_point_count, simple_factors],
             [angle_rank, jac_cnt, hyp_cnt, twist_count, max_twist_degree],
-            [geom_deg, p_rank_deficit],
-            #[size],
-            [simple, geom_simple, primitive, polarizable, jacobian],
+            [geom_deg, p_rank_deficit, geom_squarefree],
             use_geom_refine,
             [dim1, dim2, dim3, dim4, dim5],
             [dim1d, dim2d, dim3d, number_field, galois_group],
@@ -483,7 +539,7 @@ class AbvarSearchArray(SearchArray):
             [g, geom_simple],
             [initial_coefficients, polarizable],
             [p_rank, jacobian],
-            [p_rank_deficit],
+            [p_rank_deficit, geom_squarefree],
             [jac_cnt, hyp_cnt],
             [geom_deg, angle_rank],
             [twist_count, max_twist_degree],
@@ -549,6 +605,24 @@ def common_parse(info, query):
     parse_nf_string(info, query, "number_field", qfield=nf_qfield)
     parse_galgrp(info, query, "galois_group", qfield=gal_qfield)
 
+    if 'geom_squarefree' in info:
+        if info['geom_squarefree'] == 'Yes':
+            query['is_squarefree'] = True
+
+        elif info['geom_squarefree'] == 'YesAndGeom':
+            query['is_squarefree'] = True
+            query['is_geometrically_squarefree'] = True
+
+        elif info['geom_squarefree'] == 'YesNotGeom':
+            query['is_squarefree'] = True
+            query['is_geometrically_squarefree'] = False
+
+        elif info['geom_squarefree'] == 'No':
+            query['is_squarefree'] = False
+
+        elif info['geom_squarefree'] == 'NotGeom':
+            query['is_geometrically_squarefree'] = False
+
 def jump(info):
     jump_box = info["jump"].strip() # only called when this present
     try:
@@ -589,11 +663,24 @@ def jump(info):
         jump_box = "%s.%s.%s" % (g, q, "_".join(extended_code(cdict.get(i, 0)) for i in range(1, g+1)))
     return by_label(jump_box)
 
+abvar_columns = SearchColumns([
+    LinkCol("label", "ab.fq.lmfdb_label", "Label", url_for_label, default=True),
+    MathCol("g", "ag.dimension", "Dimension", default=True),
+    MathCol("field", "ag.base_field", "Base field", default=True),
+    MathCol("p", "ag.base_field", "Base char.", short_title="base characteristic"),
+    MathCol("formatted_polynomial", "av.fq.l-polynomial", "L-polynomial", short_title="L-polynomial", default=True),
+    MathCol("p_rank", "av.fq.p_rank", "$p$-rank", default=True),
+    MathCol("p_rank_deficit", "av.fq.p_rank", "$p$-rank deficit"),
+    MathCol("curve_count", "av.fq.curve_point_counts", "points on curve"),
+    MathCol("abvar_count", "ag.fq.point_counts", "points on variety"),
+    SearchCol("decomposition_display_search", "av.decomposition", "Isogeny factors", default=True)],
+    db_cols=["label", "g", "q", "poly", "p_rank", "p_rank_deficit", "is_simple", "simple_distinct", "simple_multiplicities", "is_primitive", "primitive_models", "curve_count", "abvar_count"])
+
 @search_wrap(
-    template="abvarfq-search-results.html",
     table=db.av_fq_isog,
     title="Abelian variety search results",
     err_title="Abelian variety search input error",
+    columns=abvar_columns,
     shortcuts={
         "jump": jump,
         "download": download_search,
@@ -602,7 +689,6 @@ def jump(info):
     url_for_label=url_for_label,
     learnmore=learnmore_list,
     bread=lambda: get_bread(("Search results", " ")),
-    credit=lambda: abvarfq_credit,
 )
 def abelian_variety_search(info, query):
     common_parse(info, query)
@@ -615,7 +701,6 @@ def abelian_variety_search(info, query):
     err_title="Abelian variety search input error",
     overall=AbvarFqStats()._counts,
     bread=lambda: get_bread(("Count results", " ")),
-    credit=lambda: abvarfq_credit,
 )
 def abelian_variety_count(info, query):
     common_parse(info, query)
@@ -656,7 +741,6 @@ def abelian_variety_browse(info):
         "abvarfq-index.html",
         title="Isogeny classes of abelian varieties over finite fields",
         info=info,
-        credit=abvarfq_credit,
         bread=get_bread(),
         learnmore=learnmore_list(),
     )
@@ -665,10 +749,11 @@ def search_input_error(info=None, bread=None):
     if info is None:
         info = {"err": "", "query": {}}
     info["search_array"] = AbvarSearchArray()
+    info["columns"] = abvar_columns
     if bread is None:
         bread = get_bread(("Search results", " "))
     return render_template(
-        "abvarfq-search-results.html",
+        "search_results.html",
         info=info,
         title="Abelian variety search input error",
         bread=bread,
@@ -681,7 +766,6 @@ def statistics():
     return render_template(
         "display_stats.html",
         info=AbvarFqStats(),
-        credit=abvarfq_credit,
         title=title,
         bread=get_bread(("Statistics", " ")),
         learnmore=learnmore_list(),
@@ -695,7 +779,6 @@ def dynamic_statistics():
     return render_template(
         "dynamic_stats.html",
         info=info,
-        credit=abvarfq_credit,
         title=title,
         bread=get_bread(("Dynamic Statistics", " ")),
         learnmore=learnmore_list(),
@@ -706,10 +789,11 @@ def by_label(label):
     return redirect(url_for_label(label))
 
 @abvarfq_page.route("/random")
+@redirect_no_cache
 def random_class():
     label = db.av_fq_isog.random()
     g, q, iso = split_label(label)
-    return redirect(url_for(".abelian_varieties_by_gqi", g=g, q=q, iso=iso))
+    return url_for(".abelian_varieties_by_gqi", g=g, q=q, iso=iso)
 
 @abvarfq_page.route("/interesting")
 def interesting():
@@ -719,8 +803,21 @@ def interesting():
         url_for_label,
         title=r"Some interesting isogeny classes of abelian varieties over $\Fq$",
         bread=get_bread(("Interesting", " ")),
-        credit=abvarfq_credit,
         learnmore=learnmore_list()
+    )
+
+@abvarfq_page.route("/Source")
+def how_computed_page():
+    t = "Source and acknowledgments for Weil polynomial data"
+    bread = get_bread(("Source", " "))
+    return render_template(
+        "multi.html",
+        kids=["rcs.source.av.fq",
+              "rcs.ack.av.fq",
+              "rcs.cite.av.fq"],
+        title=t,
+        bread=bread,
+        learnmore=learnmore_list_remove("Source"),
     )
 
 @abvarfq_page.route("/Completeness")
@@ -730,7 +827,6 @@ def completeness_page():
     return render_template(
         "single.html",
         kid="rcs.cande.av.fq",
-        credit=abvarfq_credit,
         title=t,
         bread=bread,
         learnmore=learnmore_list_remove("Completeness"),
@@ -743,23 +839,9 @@ def reliability_page():
     return render_template(
         "single.html",
         kid="rcs.rigor.av.fq",
-        credit=abvarfq_credit,
         title=t,
         bread=bread,
         learnmore=learnmore_list_remove("Reliability"),
-    )
-
-@abvarfq_page.route("/Source")
-def how_computed_page():
-    t = "Source of Weil polynomial data"
-    bread = get_bread(("Source", " "))
-    return render_template(
-        "single.html",
-        kid="rcs.source.av.fq",
-        credit=abvarfq_credit,
-        title=t,
-        bread=bread,
-        learnmore=learnmore_list_remove("Source"),
     )
 
 @abvarfq_page.route("/Labels")
@@ -769,7 +851,6 @@ def labels_page():
     return render_template(
         "single.html",
         kid="av.fq.lmfdb_label",
-        credit=abvarfq_credit,
         title=t,
         bread=bread,
         learnmore=learnmore_list_remove("Labels"),

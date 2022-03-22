@@ -1,4 +1,4 @@
-from __future__ import print_function
+
 from sage.all import prime_range, Integer, kronecker_symbol, PolynomialRing, ComplexField, ZZ, gap, infinity
 
 from lmfdb.lmfdb_database import db
@@ -61,7 +61,7 @@ class mf_newforms(MfChecker):
         """
         check that all columns mf_newforms has in common with
         mf_newspaces other than label, dim, relative_dim, traces,
-        trace_display match (this covers all atributes that depend
+        trace_display match (this covers all attributes that depend
         only on level, weight, char) (this implies) check that
         space_label is present in mf_newspaces
 

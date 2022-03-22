@@ -95,13 +95,25 @@ class EllCurveTest(LmfdbTest):
         L = self.tc.get('/EllipticCurve/?field=Qsqrt-11&include_base_change=on&conductor_norm=&include_isogenous=on&torsion=&torsion_structure=&count=')
         assert '2.0.11.1' in L.get_data(as_text=True)
         assert '1681' in L.get_data(as_text=True)
+        L = self.tc.get('/EllipticCurve/?jinv=0,1728')
+        t = L.get_data(as_text=True)
+        assert '729.1-CMb1' in t and '1024.1-a1' in t and '73.1-a1' not in t
+        L = self.tc.get('/EllipticCurve/?field=2.0.11.1&jinv=~-52893159101157376/11')
+        assert '11.1-a1' not in L.get_data(as_text=True)
+
+    def test_browse(self):
+        r"""
+        Check that degree browse pages display correctly
+        """
+        for n, cnt in [(2, 77095), (3, 4416), (4, 4064), (5, 792), (6, 537)]:
+            self.check_args(f"/EllipticCurve/browse/{n}", str(cnt))
 
     def test_isodeg(self):
         r"""
         Test that searching for isogeny degree works
         """
         L = self.tc.get('/EllipticCurve/?start=0&isodeg=2')
-        assert '27.2-a4' in L.get_data(as_text=True)
+        assert '73.1-a1' in L.get_data(as_text=True)
         L = self.tc.get('/EllipticCurve/?start=0&torsion=1&isodeg=2')
         assert 'No matches' in L.get_data(as_text=True)
 
@@ -109,8 +121,12 @@ class EllCurveTest(LmfdbTest):
         r"""
         Test that searching for CM field discriminant works
         """
-        self.check_args('/EllipticCurve/?cm_disc=-4','1024.1-c1')
+        self.check_args('/EllipticCurve/?cm_disc=-4','1024.1-a1')
         self.not_check_args('/EllipticCurve/?cm_disc=-4','1.0.1-a1')
+        
+        # make sure it works with 4-way PCM, CM, PCMnoCM, noCM switch
+        self.check_args('/EllipticCurve/?cm_disc=-11&include_cm=PCMnoCM','14641.1-a1')
+        self.not_check_args('/EllipticCurve/?cm_disc=-11&include_cm=PCMnoCM','9.1-CMa1')
 
     def test_related_objects(self):
         for url, text in [('/EllipticCurve/2.0.8.1/324.3/a/1',
@@ -120,8 +136,8 @@ class EllCurveTest(LmfdbTest):
                  'Base change of 576.f3',
                  'Bianchi modular form 2.0.8.1-324.3-a',
                  'Hilbert modular form 2.2.24.1-36.1-a',
-                 'Isogeny class 2.2.24.1-36.1-a',
-                 'Isogeny class 20736.i',
+                 'Elliptic curve 2.2.24.1-36.1-a',
+                 'Genus 2 curve 20736.i',
                  'L-function']),
                 ('/EllipticCurve/2.0.11.1/256.1/b/1',
                     ['Isogeny class 256.1-b',
@@ -130,11 +146,10 @@ class EllCurveTest(LmfdbTest):
                      'Bianchi modular form 2.0.11.1-256.1-b',
                      'Hilbert modular form 2.2.44.1-16.1-a',
                      'Hilbert modular form 2.2.44.1-16.1-c',
-                     'Isogeny class 2.0.11.1-256.1-a',
-                     'Isogeny class 2.2.44.1-16.1-a',
-                     'Isogeny class 2.2.44.1-16.1-c',
+                     'Elliptic curve 2.0.11.1-256.1-a',
+                     'Elliptic curve 2.2.44.1-16.1-a',
+                     'Elliptic curve 2.2.44.1-16.1-c',
                      'L-function'])]:
             L = self.tc.get(url).get_data(as_text=True)
             for t in text:
                 assert t in L
-

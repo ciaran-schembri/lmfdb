@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
+
 from lmfdb.tests import LmfdbTest
 from lmfdb import db
 
@@ -78,7 +78,7 @@ class HomePageTest(LmfdbTest):
 
     def test_sample_page_Q(self):
         """
-        Test eigenvalue, Fourier coefficient, and modulus selction on a sample page with coefficent field Q
+        Test eigenvalue, Fourier coefficient, and modulus selection on a sample page with coefficient field Q
         """
         self.check(
             "Sp4Z.24_E",
@@ -99,7 +99,7 @@ class HomePageTest(LmfdbTest):
 
     def test_sample_page_nf(self):
         """
-        Test eigenvalue, Fourier coefficient, and modulus selction on a sample page with quadratic coefficent field
+        Test eigenvalue, Fourier coefficient, and modulus selection on a sample page with quadratic coefficient field
         """
         self.check(
             "Sp4Z.18_Maass/",
@@ -150,14 +150,14 @@ class HomePageTest(LmfdbTest):
             try:
                 n = n + 1
                 self.check(full_label, [full_label, "Hecke eigenform"])
-            except:
+            except Exception:
                 print("\nError on page " + full_label)
                 errors.append(full_label)
         if not errors:
             print("\nTested %s SMF pages with no errors" % n)
         else:
             print(
-                "\nTested %d pages with %d errors occuring on the following pages:"
+                "\nTested %d pages with %d errors occurring on the following pages:"
                 % (n, len(errors))
             )
             for label in errors:

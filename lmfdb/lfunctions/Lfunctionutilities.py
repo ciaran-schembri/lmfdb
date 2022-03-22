@@ -1,18 +1,17 @@
-from __future__ import absolute_import
 # Different helper functions.
-from six import string_types
-import math, re
+import math
+import re
 
 from flask import url_for
 from sage.all import (
     ZZ, QQ, RR, CC, Rational, RationalField, ComplexField, PolynomialRing,
-    LaurentSeriesRing, O, Integer, primes, CDF, I, real_part, imag_part,
+    PowerSeriesRing, Integer, primes, CDF, I, real_part, imag_part,
     latex, factor, exp, pi, prod, floor, is_prime, prime_range)
 
 from lmfdb.utils import (
     display_complex, list_to_factored_poly_otherorder, make_bigint,
     list_factored_to_factored_poly_otherorder)
-from lmfdb.galois_groups.transitive_group import group_display_knowl_C1_as_trivial
+from lmfdb.galois_groups.transitive_group import transitive_group_display_knowl_C1_as_trivial
 from lmfdb.lfunctions import logger
 
 ###############################################################
@@ -45,7 +44,7 @@ def p2sage(s):
         return z
 
 def string2number(s):
-    # a start to replace p2sage (used for the paramters in the FE)
+    # a start to replace p2sage (used for the parameters in the FE)
     strs = str(s).replace(' ','')
     try:
         if 'e' in strs:
@@ -68,7 +67,7 @@ def string2number(s):
             return float(strs)
         else:
             return Integer(strs)
-    except:
+    except Exception:
         return s
 
 
@@ -80,7 +79,7 @@ def styleTheSign(sign):
         if sign == 0:
             return "unknown"
         return seriescoeff(sign, 0, "literal", "", 3)
-    except:
+    except Exception:
         logger.debug("no styling of sign")
         return str(sign)
 
@@ -88,7 +87,7 @@ def styleTheSign(sign):
 def seriescoeff(coeff, index, seriescoefftype, seriestype, digits):
     # seriescoefftype can be: series, serieshtml, signed, literal, factor
     try:
-        if isinstance(coeff, string_types):
+        if isinstance(coeff, str):
             if coeff == "I":
                 rp = 0
                 ip = 1
@@ -351,9 +350,9 @@ def lfuncEPhtml(L, fmt):
     good_primes = [p for p in prime_range(100) if p not in bad_primes]
     p_index = {p: i for i, p in enumerate(prime_range(100))}
 
-    #decide if we display galois
+    # decide if we display galois
     display_galois = True
-    if L.degree <= 2  or L.degree >= 12:
+    if L.degree <= 2 or L.degree >= 12:
         display_galois = False
     elif L.coefficient_field == "CDF":
         display_galois = False
@@ -402,7 +401,7 @@ def lfuncEPhtml(L, fmt):
                 if gal_groups[0]==[0,0]:
                     pass   # do nothing, because the local factor is 1
                 else:
-                    out += r"$\times$".join( [group_display_knowl_C1_as_trivial(n,k) for n, k in gal_groups] )
+                    out += r"$\times$".join( [transitive_group_display_knowl_C1_as_trivial(f"{n}T{k}") for n, k in gal_groups] )
                 out += "</td>"
             out += "<td> %s </td>" % factors
             out += "</tr>"
@@ -451,7 +450,7 @@ def lfuncEPhtml(L, fmt):
     return(ans)
 
 def lfuncEpSymPower(L):
-    """ Helper funtion for lfuncEPtex to do the symmetric power L-functions
+    """ Helper function for lfuncEPtex to do the symmetric power L-functions
     """
     ans = ''
     for p in L.S.bad_primes:
@@ -579,7 +578,7 @@ def lfuncFEtex(L, fmt):
             return len(str(x).replace(".", "").lstrip("-").lstrip("0"))
 
         def mu_fe_prec(x):
-            if L._Ltype == "maass":
+            if not L.algebraic:
                 return real_digits(imag_part(x))
             else:
                 return 3
@@ -613,7 +612,7 @@ def lfuncFEtex(L, fmt):
 
 
 def specialValueString(L, s, sLatex, normalization="analytic"):
-    ''' Returns the LaTex to dislpay for L(s)
+    ''' Returns the LaTex to display for L(s)
         Will eventually be replaced by specialValueTriple.
     '''
     if normalization=="arithmetic":
@@ -692,7 +691,7 @@ def specialValueTriple(L, s, sLatex_analytic, sLatex_arithmetic):
     else:
         lfunction_value_tex_analytic = ''
 
-    if isinstance(val, string_types):
+    if isinstance(val, str):
         Lval = val
     else:
         ccval = CDF(val)
@@ -747,10 +746,10 @@ def euler_p_factor(root_list, PREC):
     '''
     PREC = floor(PREC)
     # return satake_list
-    R = LaurentSeriesRing(CF, 'x')
-    x = R.gens()[0]
-    ep = prod([1 / (1 - a * x) for a in root_list])
-    return ep + O(x ** (PREC + 1))
+    R = PowerSeriesRing(CF, 'x')
+    x = R.gen()
+    ep = ~R.prod([1 - a * x for a in root_list])
+    return ep.O(PREC + 1)
 
 
 def compute_local_roots_SMF2_scalar_valued(K, ev, k, embedding):
@@ -764,7 +763,7 @@ def compute_local_roots_SMF2_scalar_valued(K, ev, k, embedding):
 
         try:
             ev2[p] = (ev[p], ev[p * p])
-        except:
+        except Exception:
             break
 
     logger.debug(str(ev2))
@@ -808,7 +807,7 @@ def signOfEmfLfunction(level, weight, coefs, tol=10 ** (-7), num=1.3):
         at two points related by the Atkin-Lehner involution.
         If the absolute value of the result is more than tol from 1
         then it returns "Not able to compute" which indicates to few
-        (or wrong) coeffcients.
+        (or wrong) coefficients.
         The parameter num chooses the related points and shouldn't be 1.
     """
     sum1 = 0
@@ -852,21 +851,18 @@ def getConductorIsogenyFromLabel(label):
             iso = iso[:-1]
         return cond, iso
 
-    except:
+    except Exception:
         return None, None
 
 
 
-def get_bread(degree, breads=[]):
+def get_bread(breads=[]):
     """
-    Returns the two top levels of bread crumbs plus the ones supplied in breads.
+    Returns the top level of bread crumbs plus the ones supplied in breads.
     """
-    breadcrumb = [('L-functions', url_for('.l_function_top_page')),
-          ('Degree ' + str(degree),
-           url_for('.l_function_degree_page', degree='degree' + str(degree)))]
-    for b in breads:
-        breadcrumb.append(b)
-    return breadcrumb
+    bread = [('L-functions', url_for('.index'))]
+    bread.extend(breads)
+    return bread
 
 # Convert  r0r0c1 to (0,0;1), for example
 def parse_codename(text):
@@ -880,4 +876,3 @@ def parse_codename(text):
     ans = re.sub('(r|c)', ',', ans)
 
     return '(' + ans + ')'
-

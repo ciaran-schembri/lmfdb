@@ -19,7 +19,7 @@ table.ntdata a {
   {% endif %}
 </h2>
 <p>{{ place_code('field') }}</p>
-<p>{{ info.polynomial }} {{ place_code('poly') }}</p>
+<p>{{ info.polynomial|safe }} {{ place_code('poly') }}</p>
 
 <h2> {{ KNOWL('nf.invariants', title='Invariants') }}</h2>
   <p>
@@ -28,8 +28,8 @@ table.ntdata a {
       <tr><td>{{ KNOWL('nf.signature', title="Signature") }}:<td>&nbsp;&nbsp;<td>${{info.signature}}$<td>{{ place_code('signature') }}
        <tr><td>{{ KNOWL('nf.discriminant', title="Discriminant") }}:<td>&nbsp;&nbsp;<td>{{info.discriminant|safe}}<td>{{ place_code('discriminant') }}
        <tr><td>{{ KNOWL('nf.root_discriminant', title="Root discriminant") }}:<td>&nbsp;&nbsp;<td>{{info.rd}}<td>{{ place_code('rd') }}
-      <tr><td>{{ KNOWL('nf.ramified_primes', title="Ramified primes") }}:<td>&nbsp;&nbsp;<td>${{info.ram_primes}}$<td>{{ place_code('ramified_primes') }}
-      <tr><td> $|{{ info.autstring|safe }}(K/\Q)|$:<td>&nbsp;&nbsp;<td>${{info.auts}}$</td></tr>
+      <tr><td>{{ KNOWL('nf.ramified_primes', title="Ramified primes") }}:<td>&nbsp;&nbsp;<td>{{info.ram_primes|safe}}<td>{{ place_code('ramified_primes') }}
+      <tr><td> $\card{ {{ info.autstring|safe }}(K/\Q) }$:<td>&nbsp;&nbsp;<td>${{info.auts}}$</td></tr>
 {% if info.is_abelian %}
     <tr><td colspan="3">This field is Galois and abelian over $\Q$.</tr>
         <tr><td>{{KNOWL('nf.conductor', title='Conductor')}}:<td>&nbsp;&nbsp;<td>{{info.conductor}}</tr>
@@ -62,9 +62,16 @@ table.ntdata a {
         <p><h2> {{ KNOWL('nf.integral_basis', title='Integral basis') }} (with respect to {{ KNOWL('nf.generator', title='field generator') }} \(a\))</h2>
 {% endif %}
         <p>
-            {{ info.integral_basis }}
+            {{ info.integral_basis | safe }}
             {{ place_code('integral_basis') }}
         </p>
+        <p>
+          <table>
+            <tr><td>{{ KNOWL('nf.monogenic', title='Monogenic')}}:<td>&nbsp;&nbsp;<td>{{info.monogenic}}
+            <tr><td>{{ KNOWL('nf.zk_index', title='Index')}}:<td>&nbsp;&nbsp;<td>{{info.index}}
+            <tr><td>{{ KNOWL('nf.inessential_prime', title='Inessential primes')}}:<td>&nbsp;&nbsp;<td>{{info.inessential}}
+           </table>
+           </p>
 
         <h2> {{ KNOWL('nf.ideal_class_group', title='Class group') }} and  {{ KNOWL('nf.class_number', title='class number') }}</h2>
         <p>
@@ -81,7 +88,7 @@ table.ntdata a {
           <table>
             <tr><td>{{ KNOWL('nf.rank', title='Rank')}}:<td>&nbsp;&nbsp;<td>${{info.unit_rank}}$
             <td>{{ place_code('unit_rank') }}</tr>
-            <tr><td>{{ KNOWL('nf.torsion', title='Torsion generator') }}:<td>&nbsp;&nbsp;<td>{{info.root_of_unity}}
+            <tr><td>{{ KNOWL('nf.torsion', title='Torsion generator') }}:<td>&nbsp;&nbsp;<td>{{info.root_of_unity|safe}}
             <td>{{ place_code('unit_torsion_gen') }}</tr>
 {% if info.unit_rank==1 %}
             <tr><td>{{ KNOWL('nf.fundamental_units', title='Fundamental unit') }}:<td>&nbsp;&nbsp;<td>{{info.fund_units|safe}}
@@ -260,7 +267,7 @@ $\displaystyle\lim_{s\to 1} (s-1)\zeta_K(s) {{ info.cnf|safe }} {{ info.grh_labe
     <th>Label</th>
     <th>{{ KNOWL('artin.dimension', title='Dimension') }}</th>
     <th>{{ KNOWL('artin.conductor', title='Conductor') }}</th>
-    <th>Defining polynomial of {{ KNOWL('artin.number_field', title='Artin field') }} </th>
+    <th>{{ KNOWL('artin.stem_field', title='Artin stem field') }} </th>
     <th>{{ KNOWL('artin.gg_quotient', title='$G$') }}</th>
     {# <th>{{ KNOWL('artin.root_number', title='Root number') }}</th> #}
     <th>{{ KNOWL('artin.frobenius_schur_indicator', title='Ind') }}</th>
@@ -274,7 +281,7 @@ $\displaystyle\lim_{s\to 1} (s-1)\zeta_K(s) {{ info.cnf|safe }} {{ info.grh_labe
 {#    <td align="center">${{artin.conductor_equation()}}$</td> #}
       <td align="center">${{artin.factored_conductor_latex()}}$</td>
       {% if artin.number_field_galois_group().url_for() %}
-         <td align="center"><a href="{{artin.number_field_galois_group().url_for()}}">${{artin.number_field_galois_group().polredabslatex()}}$</a></td>
+         <td align="center">{{formatfield(artin.number_field_galois_group().polynomial(), show_poly=True) | safe}}
       {% else %}
           <td align="center">${{artin.number_field_galois_group().polredabslatex()}}$</td>
       {% endif %}

@@ -1,10 +1,9 @@
-from __future__ import print_function
+
 import datetime
 from lmfdb.api2 import __version__
 import json
 #from bson.objectid import ObjectId
 from lmfdb import db
-import lmfdb.inventory_app.inventory_viewer as inventory
 
 api_version = __version__
 
@@ -14,19 +13,22 @@ api_type_inventory = 'API_INVENTORY'
 api_type_records = 'API_RECORDS'
 api_type_error = 'API_ERROR'
 
+
 class test_obj:
     def _toJSON(self):
-        return ['TEST','OBJECT']
+        return ['TEST', 'OBJECT']
+
 
 class APIEncoder(json.JSONEncoder):
     def default(self, obj):
-      try:
-        return obj._toJSON()
-      except:
-          try:
-              return str(obj)
-          except:
-              return json.JSONEncoder.default(self, obj)
+        try:
+            return obj._toJSON()
+        except Exception:
+            try:
+                return str(obj)
+            except Exception:
+                return json.JSONEncoder.default(self, obj)
+
 
 def create_search_dict(table='', query=None, view_start=0, request = None):
     """
@@ -63,8 +65,10 @@ def build_api_wrapper(api_key, api_type, data, request = None):
         'api_version':api_version, 'type':api_type, 'data':data},
         indent=4, sort_keys=False, cls = APIEncoder)
 
-def build_api_records(api_key, record_count, r_c_e, view_start, view_count, record_list, \
-                        max_count=None, request = None):
+
+def build_api_records(api_key, record_count, r_c_e, view_start,
+                      view_count, record_list,
+                      max_count=None, request=None):
     """
     Build an API object from a set of records. Automatically calculates point to start view to get next record.
     'View' is the concept of which part of all of the records returned by a query is contained in _this_ api response
@@ -83,17 +87,21 @@ def build_api_records(api_key, record_count, r_c_e, view_start, view_count, reco
     request -- Flask request object to query for needed data
 
     """
-    view_count = min(view_count, record_count-view_start)
+    view_count = min(view_count, record_count - view_start)
     next_block = view_start + view_count if (view_start + view_count < record_count or not r_c_e) else -1
-    if view_count == 0 :
+    if view_count == 0:
         next_block = -1
         view_start = -1
-    keys = {"record_count":record_count, "record_count_correct":r_c_e, "view_start":view_start, "view_count":view_count, \
-            "view_next":next_block,"records":record_list}
-    if max_count: keys['api_max_count'] = max_count
+    keys = {"record_count": record_count,
+            "record_count_correct": r_c_e,
+            "view_start": view_start, "view_count": view_count,
+            "view_next": next_block, "records": record_list}
+    if max_count:
+        keys['api_max_count'] = max_count
     return build_api_wrapper(api_key, api_type_records, keys, request)
 
-def build_api_search(api_key, mddtuple, max_count=None, request = None):
+
+def build_api_search(api_key, mddtuple, max_count=None, request=None):
     """
     Build an API object from a set of records. Automatically calculates point to start view to get next record.
     'View' is the concept of which part of all of the records returned by a query is contained in _this_ api response
@@ -162,9 +170,8 @@ def build_api_error(string, request = None):
     return build_api_wrapper('GLOBAL', api_type_error, string, request)
 
 
-def build_description(objlist, name, desc, type, h_name, 
-    db_name=None, coll_name=None, field_name=None, request=None):
-
+def build_description(objlist, name, desc, typ, h_name, db_name=None,
+                      coll_name=None, field_name=None, request=None):
     """
     Build a description object by specifying a new searchable field
     If this maps to searching a single database field then the user should supply
@@ -172,15 +179,13 @@ def build_description(objlist, name, desc, type, h_name,
     objlist -- searcher object(dictionary) that is being built
     name -- Name of search key, must be unique
     desc -- Description of searcher, if None will be obtained from inventory if is search on single field
-    type -- type of search that can be performed. Not used yet
+    typ -- type of search that can be performed. Not used yet
     h_name -- Short human readable name for search
     db_name -- Name of database to be searched by this searcher. Optional
     coll_name -- Name of collection to be searched by this searcher. Optional
     field_name -- Name of field to be searched by this searcher. Optional
     request -- Flask request object to query for needed data. Optional
     """
-    
-
     objlist[name] = {}
     objlist[name]['human_name'] = h_name
     if (db_name and coll_name and field_name):
@@ -194,18 +199,20 @@ def build_description(objlist, name, desc, type, h_name,
     objlist[name]['desc'] = desc_obj
     objlist[name]['type'] = type
 
+
 def get_filtered_fields(coll_pair):
 
     """
     Get a list of fields on which searching is possible
     coll_pair -- Two element list or tuple (prefix, name)
     """
+    return None
 
-    data = inventory.retrieve_description(coll_pair[0], coll_pair[1])
-    field_list = data['data']
-    if not field_list : return None
+    #data = inventory.retrieve_description(coll_pair[0], coll_pair[1])
+    #field_list = data['data']
+    #if not field_list : return None
 
-    return field_list
+    #return field_list
 
 def get_cname_list(info):
     """
@@ -248,14 +255,16 @@ def default_projection(request, cnames=None):
     """
     try:
         fields = request.args.get('_fields').split(',')
-        if cnames:fields = [cnames.get(el,el) for el in fields]
+        if cnames:
+            fields = [cnames.get(el,el) for el in fields]
         exclude = False
         try:
-            if request.args.get('_exclude'): exclude = True
-        except:
+            if request.args.get('_exclude'):
+                exclude = True
+        except Exception:
             pass
         project = build_query_projection(fields, exclude = exclude)
-    except:
+    except Exception:
         project = None
     return project
 
@@ -272,14 +281,15 @@ def build_query_projection(field_list, exclude=False):
     """
     keys = {"_id":0}
     val = 1
-    if exclude: val = 0
+    if exclude:
+        val = 0
     for el in field_list:
         keys[el] = val
     return keys
 
 def compare_db_strings(str1, str2):
     """
-    Compare two database strings for compatability. Same db and collection, not same field
+    Compare two database strings for compatibility. Same db and collection, not same field
     str1 -- First database string to compare
     str2 -- Second database string to compare
     """
@@ -287,7 +297,8 @@ def compare_db_strings(str1, str2):
     splt1 = str1.split('/')
     splt2 = str2.split('/')
 
-    if (len(splt1) < 3 or len(splt2) < 3): return False
+    if (len(splt1) < 3 or len(splt2) < 3):
+        return False
     return (splt1[0] == splt2[0]) and (splt1[1] == splt2[1])
 
 def trim_comparator(value, comparators):
@@ -336,7 +347,7 @@ def interpret(query, qkey, qval, type_info):
             elif type_info == 'integer':
                 try:
                     qval = int(qval)
-                except:
+                except Exception:
                     qval = [int(_) for _ in qval.split(DELIM)]
             elif type_info == 'real':
                 qval = float(qval)
@@ -351,12 +362,14 @@ def interpret(query, qkey, qval, type_info):
 
             print(type_info)
 
-            if not user_infer and comparator: qval = {comparator:qval}
+            if not user_infer and comparator:
+                qval = {comparator: qval}
 
-        except:
-          user_infer = True
+        except Exception:
+            user_infer = True
     else:
-        if qval.startswith("|"): qval = qval[1:]
+        if qval.startswith("|"):
+            qval = qval[1:]
 
     if user_infer:
         try:
@@ -386,7 +399,7 @@ def interpret(query, qkey, qval, type_info):
                 qval = { "$in" : [float(qval[2:])] }
             elif qval.startswith("cpy"):
                 qval = { "$in" : [literal_eval(qval[3:])] }
-        except:
+        except Exception:
             # no suitable conversion for the value, keep it as string
             return
     query[qkey] = qval
@@ -406,18 +419,19 @@ def simple_search_postgres(search_dict, projection=None):
     offset = search_dict.get('view_start', 0)
     rcount = search_dict.get('max_count', 100)
 
-    if not projection: 
+    if not projection:
         projection = 2
     else:
-        #Strip out removal of mongo _id fields
+        # Strip out removal of mongo _id fields
         p2 = {}
         for el in projection:
-            if el != "_id": p2[el] = projection[el]
+            if el != "_id":
+                p2[el] = projection[el]
         projection = p2
 
     metadata = {}
     C = db[search_dict['table']]
-    info={}
+    info = {}
     try:
         data = C.search(search_dict['query'], projection = projection, limit = rcount, 
             offset = offset, info = info)
@@ -429,7 +443,8 @@ def simple_search_postgres(search_dict, projection=None):
     metadata['record_count'] = info['number']
     metadata['correct_count'] = info['exact_count']
     if data:
-      data_out = list(list(data))
-    else: data_out = []
+        data_out = list(list(data))
+    else:
+        data_out = []
     metadata['view_count'] = len(data_out)
     return metadata, list(data_out), search_dict

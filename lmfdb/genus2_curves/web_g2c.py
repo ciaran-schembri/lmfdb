@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
 
 from ast import literal_eval
+import os
+import re
+import yaml
 from lmfdb import db
 from lmfdb.utils import (key_for_numerically_sort, encode_plot, prop_int_pretty,
                          list_to_factored_poly_otherorder, make_bigint, names_and_urls,
-                         display_knowl, web_latex_factored_integer)
+                         display_knowl, web_latex_factored_integer, integer_squarefree_part, integer_prime_divisors)
 from lmfdb.lfunctions.LfunctionDatabase import get_instances_by_Lhash_and_trace_hash
 from lmfdb.ecnf.main import split_full_label as split_ecnf_label
-from lmfdb.ecnf.WebEllipticCurve import convert_IQF_label
 from lmfdb.elliptic_curves.web_ec import split_lmfdb_label
 from lmfdb.number_fields.number_field import field_pretty
 from lmfdb.number_fields.web_number_field import nf_display_knowl
 from lmfdb.cluster_pictures.web_cluster_picture import cp_display_knowl
-from lmfdb.galois_groups.transitive_group import group_display_knowl, small_group_label_display_knowl
-from lmfdb.sato_tate_groups.main import st_link_by_name
+from lmfdb.groups.abstract.main import abstract_group_display_knowl
+from lmfdb.galois_groups.transitive_group import transitive_group_display_knowl
+from lmfdb.sato_tate_groups.main import st_display_knowl, st_anchor
 from lmfdb.genus2_curves import g2c_logger
 from sage.all import latex, ZZ, QQ, CC, lcm, gcd, PolynomialRing, implicit_plot, point, real, sqrt, var,  nth_prime
 from sage.plot.text import text
@@ -51,9 +54,29 @@ def simplify_hyperelliptic(fh):
     xR = PolynomialRing(QQ,'x')
     f = 4*xR(fh[0]) + xR(fh[1])**2
     n = gcd(f.coefficients())
-    f = (n.squarefree_part() * f) / n
+    f = (integer_squarefree_part(n) * f) / n
     return f.coefficients(sparse=False)
 
+def simplify_hyperelliptic_point(fh, pt):
+    xR = PolynomialRing(QQ,'x')
+    f = 4*xR(fh[0]) + xR(fh[1])**2
+    f1 = xR(fh[1])
+    n = gcd(f.coefficients())
+    xzR = PolynomialRing(QQ,['x','z'])
+    z = xzR('z')
+    f1 = (xzR(f1)*z**(4-len(fh[1]))).homogenize(z)
+    return [pt[0], (2*pt[1] + f1([pt[0],pt[2]])) / n, pt[2]]
+
+def comp_poly(fh):
+    xR = PolynomialRing(QQ,'x')
+    f = 4*xR(fh[0]) + xR(fh[1])**2
+    f1 = xR(fh[1])
+    n = gcd(f.coefficients())
+    xyzR = PolynomialRing(QQ,['x','y','z'])
+    y = xyzR('y')
+    z = xyzR('z')
+    f1 = (xyzR(f1)*z**(4-len(fh[1]))).homogenize(z)
+    return (2*y + f1) / n
 
 def min_eqns_pretty(fh):
     xR = PolynomialRing(QQ,'x')
@@ -73,21 +96,19 @@ def min_eqns_pretty(fh):
 
 
 def url_for_ec(label):
-    if not '-' in label:
+    if '-' not in label:
         return url_for('ec.by_ec_label', label = label)
     else:
         (nf, cond, isog, num) = split_ecnf_label(label)
-        cond = convert_IQF_label(nf,cond)
         url = url_for('ecnf.show_ecnf', nf = nf, conductor_label = cond, class_label = isog, number = num)
         return url
 
 def url_for_ec_class(ec_label):
-    if not '-' in ec_label:
+    if '-' not in ec_label:
         (cond, iso, num) = split_lmfdb_label(ec_label)
         return url_for('ec.by_double_iso_label', conductor=cond, iso_label=iso)
     else:
         (nf, cond, isog, num) = split_ecnf_label(ec_label)
-        cond = convert_IQF_label(nf,cond)
         return url_for('ecnf.show_ecnf_isoclass', nf=nf, conductor_label=cond, class_label=isog)
 
 def ec_label_class(ec_label):
@@ -95,6 +116,14 @@ def ec_label_class(ec_label):
     while x[-1].isdigit():
         x = x[:-1]
     return x
+
+def g2c_lmfdb_label(cond, alpha, disc, num):
+    return "%s.%s.%s.%s" % (cond, alpha, disc, num)
+
+g2c_lmfdb_label_regex = re.compile(r'(\d+)\.([a-z]+)\.(\d+)\.(\d+)')
+
+def split_g2c_lmfdb_label(lab):
+    return g2c_lmfdb_label_regex.match(lab).groups()
 
 def factorsRR_raw_to_pretty(factorsRR):
     if factorsRR == ['RR']:
@@ -266,14 +295,14 @@ def st0_group_name(name):
         return st0_dict[name]
     else:
         return name
-        
+
 def plot_from_label(label):
     curve = db.g2c_curves.lookup(label)
     ratpts = db.g2c_ratpts.lookup(curve['label'])
     min_eqn = literal_eval(curve['eqn'])
     plot = encode_plot(eqn_list_to_curve_plot(min_eqn, ratpts['rat_pts']))
     return plot
-    
+
 ###############################################################################
 # Statement functions for displaying formatted endomorphism data
 ###############################################################################
@@ -421,7 +450,7 @@ def end_lattice_statement(lattice):
                 % (strlist_to_nfelt(ED[0][2], 'a'), intlist_to_poly(ED[0][1])))
         statement += ":\n"
         statement += end_statement(ED[1], ED[2], field='F', ring=ED[3])
-        statement += "&nbsp;&nbsp;Sato Tate group: %s" % st_link_by_name(1,4,ED[4])
+        statement += "&nbsp;&nbsp;Sato Tate group: %s" % st_display_knowl(ED[4])
         statement += "<br>&nbsp;&nbsp;"
         statement += gl2_simple_statement(ED[1], ED[2])
         statement += "</p>\n"
@@ -442,20 +471,46 @@ def split_field_statement(is_simple_geom, field_label, poly):
 
 def split_statement(coeffs, labels, condnorms):
     if len(coeffs) == 1:
-        statement = "Decomposes up to isogeny as the square of the elliptic curve:"
+        statement = "Decomposes up to isogeny as the square of the elliptic curve isogeny class:"
     else:
-        statement = "Decomposes up to isogeny as the product of the non-isogenous elliptic curves:"
+        statement = "Decomposes up to isogeny as the product of the non-isogenous elliptic curve isogeny classes:"
     for n in range(len(coeffs)):
         # Use labels when possible:
         label = labels[n] if labels else ''
         if label:
-            statement += "<br>&nbsp;&nbsp;Elliptic curve <a href=%s>%s</a>" % (url_for_ec(label), label)
+            statement += "<br>&nbsp;&nbsp;Elliptic curve isogeny class <a href=%s>%s</a>" % (url_for_ec_class(label), ec_label_class(label))
         # Otherwise give defining equation:
         else:
             statement += r"<br>&nbsp;&nbsp;\(y^2 = x^3 - g_4 / 48 x - g_6 / 864\) with"
             statement += r"<br>&nbsp;&nbsp;\(g_4 = %s\)<br>&nbsp;&nbsp;\(g_6 = %s\)" % tuple(map (lambda x: strlist_to_nfelt(x,'b'),coeffs[n]))
             statement += "<br>&nbsp;&nbsp; Conductor norm: %s" % condnorms[n]
     return statement
+
+# function for displaying GSp4 subgroup data
+def gsp4_subgroup_data(label):
+    try:
+        data = db.gps_gsp4zhat.lookup(label)
+    except ValueError:
+        return "Invalid label for subgroup of GSp(4,Zhat): %s" % label
+    row_wrap = lambda cap, val: "<tr><td>%s: </td><td>%s</td></tr>\n" % (cap, val)
+    matrix = lambda m: r'$\begin{bmatrix}%s&%s&%s&%s\\%s&%s&%s&%s\\%s&%s&%s&%s\\%s&%s&%s&%s\end{bmatrix}$' % (m[0],m[1],m[2],m[3],m[4],m[5],m[6],m[7],m[8],m[9],m[10],m[11],m[12],m[13],m[14],m[15])
+    info = '<table>\n'
+    info += row_wrap('Subgroup <b>%s</b>' % (label),  "<small>" + ', '.join([matrix(m) for m in data['generators']]) + "</small>")
+    info += "<tr><td></td><td></td></tr>\n"
+    info += row_wrap('Level', data['level'])
+    info += row_wrap('Index', data['index'])
+
+    info += row_wrap('Contains $-1$', "yes" if data['quadratic_twists'][0] == label else "no")
+    N = ZZ(data['level'])
+    ell = N.prime_divisors()[0]
+    e = N.valuation(ell)
+    if e == 1:
+        info += row_wrap("(%s,%s)-isogeny field degree" % (ell,ell), min([r[1] for r in data['isogeny_orbits'] if r[0] == ell]))
+        info += row_wrap("Cyclic %s-torsion field degree" % (ell), min([r[1] for r in data['orbits'] if r[0] == ell]))
+        fulltorsflddeg = ell**4*(ell**4-1)*(ell**2-1)*(ell-1) // data['index']
+        info += row_wrap("Full %s-torsion field degree" % (ell), fulltorsflddeg)
+    info += "</table>\n"
+    return info
 
 # create friend entry from url (typically coming from lfunc_instances)
 def lfunction_friend_from_url(url):
@@ -469,8 +524,7 @@ def lfunction_friend_from_url(url):
         label = parts[2] + "." + parts[3]
         return ("EC isogeny class " + label, "/" + url)
     if parts[0] == "EllipticCurve":
-        cond = convert_IQF_label(parts[1],parts[2])
-        label = parts[1] + "-" + cond + "-" + parts[3]
+        label = parts[1] + "-" + parts[2] + "-" + parts[3]
         return ("EC isogeny class " + label, "/" + url)
     if parts[0] == "ModularForm" and parts[1] == "GL2" and parts[2] == "TotallyReal" and parts[4] == "holomorphic":
         label = parts[5]
@@ -495,8 +549,11 @@ def add_friend(friends, friend):
             return
     friends.append(friend)
 
-def th_wrap(kwl, title):
-    return ' <th>%s</th>' % display_knowl(kwl, title=title)
+def th_wrap(kwl, title, colspan=1):
+    if colspan > 1:
+        return ' <th colspan=%s>%s</th>' % (colspan, display_knowl(kwl, title=title))
+    else:
+        return ' <th>%s</th>' % display_knowl(kwl, title=title)
 def td_wrapl(val):
     return r' <td align="left">\(%s\)</td>' % val
 def td_wrapr(val):
@@ -509,15 +566,18 @@ def td_wrapcn(val):
 def point_string(P):
     return '(' + ' : '.join(map(str, P)) + ')'
 
-def mw_gens_table(invs,gens,hts,pts):
+def mw_gens_table(invs,gens,hts,pts,comp=PolynomialRing(QQ,['x','y','z'])('y')):
     def divisor_data(P):
-        R = PolynomialRing(QQ,['x','z']); x = R('x');z = R('z')
-        xP,yP = P[0],P[1]
-        xden,yden = lcm([r[1] for r in xP]), lcm([r[1] for r in yP])
+        R = PolynomialRing(QQ, ['x','z'])
+        x = R('x')
+        z = R('z')
+        xP, yP = P[0], P[1]
+        xden, yden = lcm([r[1] for r in xP]), lcm([r[1] for r in yP])
         xD = sum([ZZ(xden)*ZZ(xP[i][0])/ZZ(xP[i][1])*x**i*z**(len(xP)-i-1) for i in range(len(xP))])
         if str(xD.factor())[:4] == "(-1)":
             xD = -xD
         yD = sum([ZZ(yden)*ZZ(yP[i][0])/ZZ(yP[i][1])*x**i*z**(len(yP)-i-1) for i in range(len(yP))])
+        yD = comp(x, yD, z)
         return [make_bigint(elt, 10) for elt in [str(xD.factor()).replace("**","^").replace("*",""), str(yden)+"y" if yden > 1 else "y", str(yD).replace("**","^").replace("*","")]], xD, yD, yden
     if not invs:
         return ''
@@ -541,6 +601,10 @@ def mw_gens_table(invs,gens,hts,pts):
     gentab.extend(['</tbody>', '</table>'])
     return '\n'.join(gentab)
 
+def mw_gens_simple_table(invs,gens,hts,pts,fh):
+    spts = [simplify_hyperelliptic_point(fh,pt) for pt in pts]
+    return mw_gens_table(invs,gens,hts,spts,comp=comp_poly(fh))
+
 def local_table(N,D,tama,bad_lpolys,cluster_pics):
     loctab = ['<table class="ntdata">', '<thead>', '<tr>',
               th_wrap('ag.bad_prime', 'Prime'),
@@ -550,7 +614,7 @@ def local_table(N,D,tama,bad_lpolys,cluster_pics):
               th_wrap('g2c.bad_lfactors', 'L-factor'),
               th_wrap('ag.cluster_picture', 'Cluster picture'),
               '</tr>', '</thead>', '<tbody>']
-    for p in D.prime_divisors():
+    for p in integer_prime_divisors(D):
         loctab.append('  <tr>')
         cplist = [r for r in tama if r[0] == p]
         if cplist:
@@ -573,6 +637,21 @@ def local_table(N,D,tama,bad_lpolys,cluster_pics):
     loctab.extend(['</tbody>', '</table>'])
     return '\n'.join(loctab)
 
+def galrep_table(galrep):  
+    galtab = ['<table class="ntdata">', '<thead>', '<tr>',
+              th_wrap('', r'Prime \(\ell\)'),
+              th_wrap('g2c.galois_rep_image', r'mod-\(\ell\) image'),
+              '</tr>', '</thead>', '<tbody>']
+    for i in range(len(galrep)):
+        p = galrep[i]['prime']
+        modellimage_lbl = galrep[i]['modell_image']
+        galtab.append('  <tr>')
+        modellimg = display_knowl('gsp4.subgroup_data', title=modellimage_lbl, kwargs={'label':modellimage_lbl})
+        galtab.extend([td_wrapc(p),td_wrapcn(modellimg)])
+        galtab.append('  </tr>')
+    galtab.extend(['</tbody>', '</table>'])
+    return '\n'.join(galtab)
+
 def ratpts_table(pts,pts_v):
     def sorted_points(pts):
         return sorted(pts,key=lambda P:(max([abs(x) for x in P]),sum([abs(x) for x in P])))
@@ -582,16 +661,15 @@ def ratpts_table(pts,pts_v):
     kid = 'g2c.all_rational_points' if pts_v else 'g2c.known_rational_points'
     if len(pts) == 0:
         if pts_v:
-            return '<p>This curve has no %s.</p>' % display_knowl(kid, 'rational points')
+            return 'This curve has no %s.' % display_knowl(kid, 'rational points')
         else:
-            return '<p>No %s for this curve.</p>' % display_knowl(kid, 'rational points are known')
+            return 'No %s for this curve.' % display_knowl(kid, 'rational points are known')
     spts = [point_string(P) for P in pts]
     caption = 'All points' if pts_v else 'Known points'
     tabcols = 6
     if len(pts) <= tabcols+1:
-        return r'<p>%s: \(%s\)</p>' % (display_knowl(kid,caption),r',\, '.join(spts))
-    ptstab = ['<table class="ntdata">', '<thead>', '<tr>', th_wrap(kid, caption)]
-    ptstab.extend(['<th></th>' for i in range(tabcols-1)])
+        return r'%s: \(%s\)' % (display_knowl(kid,caption),r',\, '.join(spts))
+    ptstab = ['<table class="ntdata">', '<thead>', '<tr>', th_wrap(kid, caption, colspan=tabcols)]
     ptstab.extend(['</tr>', '</thead>', '<tbody>'])
     for i in range(0,len(pts),6):
         ptstab.append('<tr>')
@@ -601,6 +679,10 @@ def ratpts_table(pts,pts_v):
         ptstab.append('</tr>')
     ptstab.extend(['</tbody>', '</table>'])
     return '\n'.join(ptstab)
+
+def ratpts_simpletable(pts,pts_v,fh):
+    spts = [simplify_hyperelliptic_point(fh, pt) for pt in pts]
+    return ratpts_table(spts,pts_v)
 
 
 ###############################################################################
@@ -618,8 +700,8 @@ class WebG2C(object):
         bread -- bread crumbs for home page (conductor, isogeny class id, discriminant, curve id)
         title -- title to display on home page
     """
-    def __init__(self, curve, endo, tama, ratpts, clus, is_curve=True):
-        self.make_object(curve, endo, tama, ratpts, clus, is_curve)
+    def __init__(self, curve, endo, tama, ratpts, clus, galrep, is_curve=True):
+        self.make_object(curve, endo, tama, ratpts, clus, galrep, is_curve)
 
     @staticmethod
     def by_label(label):
@@ -668,9 +750,10 @@ class WebG2C(object):
                 except Exception:
                     g2c_logger.error("Cluster picture data for genus 2 curve %s not found in database." % label)
                     raise KeyError("Cluster picture data for genus 2 curve %s not found in database." % label)
-        return WebG2C(curve, endo, tama, ratpts, clus, is_curve=(len(slabel)==4))
+        galrep = list(db.g2c_galrep.search({'lmfdb_label': curve['label']},['prime', 'modell_image']))
+        return WebG2C(curve, endo, tama, ratpts, clus, galrep, is_curve=(len(slabel)==4))
 
-    def make_object(self, curve, endo, tama, ratpts, clus, is_curve):
+    def make_object(self, curve, endo, tama, ratpts, clus, galrep, is_curve):
         from lmfdb.genus2_curves.main import url_for_curve_label
 
         # all information about the curve, its Jacobian, isogeny class, and endomorphisms goes in the data dictionary
@@ -690,7 +773,7 @@ class WebG2C(object):
         data['analytic_rank_proved'] = curve['analytic_rank_proved']
         data['hasse_weil_proved'] = curve['hasse_weil_proved']
         data['st_group'] = curve['st_group']
-        data['st_group_link'] = st_link_by_name(1,4,data['st_group'])
+        data['st_group_link'] = st_display_knowl(curve['st_label'])
         data['st0_group_name'] = st0_group_name(curve['real_geom_end_alg'])
         data['is_gl2_type'] = curve['is_gl2_type']
         data['root_number'] = ZZ(curve['root_number'])
@@ -710,8 +793,8 @@ class WebG2C(object):
             data['g2'] = [QQ(a) for a in literal_eval(curve['g2_inv'])]
             data['igusa_clebsch_factor_latex'] = [web_latex_factored_integer(i) for i in data['igusa_clebsch']]
             data['igusa_factor_latex'] = [ web_latex_factored_integer(j) for j in data['igusa'] ]
-            data['aut_grp'] = small_group_label_display_knowl('%d.%d' % tuple(literal_eval(curve['aut_grp_id'])))
-            data['geom_aut_grp'] = small_group_label_display_knowl('%d.%d' % tuple(literal_eval(curve['geom_aut_grp_id'])))
+            data['aut_grp'] = abstract_group_display_knowl(curve['aut_grp_label'], f"${curve['aut_grp_tex']}$")
+            data['geom_aut_grp'] = abstract_group_display_knowl(curve['geom_aut_grp_label'], f"${curve['geom_aut_grp_tex']}$")
             data['num_rat_wpts'] = ZZ(curve['num_rat_wpts'])
             data['has_square_sha'] = "square" if curve['has_square_sha'] else "twice a square"
             P = curve['non_solvable_places']
@@ -734,7 +817,7 @@ class WebG2C(object):
             data['regulator'] = decimal_pretty(str(curve['regulator'])) if curve['regulator'] > -0.5 else 'unknown'
             if data['mw_rank'] == 0 and data['mw_rank_proved']:
                 data['regulator'] = '1' # display an exact 1 when we know this
-                
+
             data['tamagawa_product'] = ZZ(curve['tamagawa_product']) if curve.get('tamagawa_product') else 0
             data['analytic_sha'] = ZZ(curve['analytic_sha']) if curve.get('analytic_sha') else 0
             data['leading_coeff'] = decimal_pretty(str(curve['leading_coeff'])) if curve['leading_coeff'] else 'unknown'
@@ -742,6 +825,7 @@ class WebG2C(object):
             data['rat_pts'] = ratpts['rat_pts']
             data['rat_pts_v'] =  ratpts['rat_pts_v']
             data['rat_pts_table'] = ratpts_table(ratpts['rat_pts'],ratpts['rat_pts_v'])
+            data['rat_pts_simple_table'] = ratpts_simpletable(ratpts['rat_pts'],ratpts['rat_pts_v'],data['min_eqn'])
 
             data['mw_gens_v'] = ratpts['mw_gens_v']
             lower = len([n for n in ratpts['mw_invs'] if n == 0])
@@ -753,16 +837,27 @@ class WebG2C(object):
                 data['mw_group'] = r'\(' + r' \times '.join([ (r'\Z' if n == 0 else r'\Z/{%s}\Z' % n) for n in invs]) + r'\)'
             if lower >= upper:
                 data['mw_gens_table'] = mw_gens_table (ratpts['mw_invs'], ratpts['mw_gens'], ratpts['mw_heights'], ratpts['rat_pts'])
+                data['mw_gens_simple_table'] = mw_gens_simple_table (ratpts['mw_invs'], ratpts['mw_gens'], ratpts['mw_heights'], ratpts['rat_pts'], data['min_eqn'])
 
             if curve['two_torsion_field'][0]:
                 data['two_torsion_field_knowl'] = nf_display_knowl (curve['two_torsion_field'][0], field_pretty(curve['two_torsion_field'][0]))
             else:
                 t = curve['two_torsion_field']
-                data['two_torsion_field_knowl'] = r"splitting field of \(%s\) with Galois group %s" % (intlist_to_poly(t[1]),group_display_knowl(t[2][0],t[2][1]))
+                data['two_torsion_field_knowl'] = r"splitting field of \(%s\) with Galois group %s" % (intlist_to_poly(t[1]),transitive_group_display_knowl(f"{t[2][0]}T{t[2][1]}"))
 
             tamalist = [[item['p'],item['tamagawa_number']] for item in tama]
             data['local_table'] = local_table (data['cond'],data['abs_disc'],tamalist,data['bad_lfactors_pretty'],clus)
+            data['galrep_table'] = galrep_table (galrep)
 
+            lmfdb_label = data['label']
+            cond, alpha, disc, num = split_g2c_lmfdb_label(lmfdb_label)
+            self.downloads = [#('Frobenius eigenvalues to text', url_for(".download_G2C_fouriercoeffs", label=self.lmfdb_label, limit=1000)),
+                          ('All stored data to text', url_for(".download_G2C_all", label=lmfdb_label)),
+                          ('Code to Magma', url_for(".g2c_code_download", conductor=cond, iso=alpha, discriminant=disc, number=num, label=lmfdb_label, download_type='magma'))#,
+                          #('Code to SageMath', url_for(".g2c_code_download", conductor=cond, iso=alpha, discriminant=disc, number=num, label=lmfdb_label, download_type='sage')),
+                          #('Code to GP', url_for(".g2c_code_download", conductor=cond, iso=alpha, discriminant=disc, number=num, label=lmfdb_label, download_type='gp'))
+            ]
+            #TODO (?) also for the isogeny class
         else:
             # invariants specific to isogeny class
             curves_data = list(db.g2c_curves.search({"class" : curve['class']}, ['label','eqn']))
@@ -787,7 +882,7 @@ class WebG2C(object):
         data['end_field_label'] = endo['fod_label']
         data['end_field_poly'] = intlist_to_poly(endo['fod_coeffs'])
         data['end_field_statement'] = end_field_statement(data['end_field_label'], data['end_field_poly'])
-        
+
         # Endomorphism data over QQbar:
         data['factorsQQ_geom'] = endo['factorsQQ_geom']
         data['factorsRR_geom'] = endo['factorsRR_geom']
@@ -839,7 +934,7 @@ class WebG2C(object):
         else:
             properties += [('Conductor', prop_int_pretty(data['cond']))]
         properties += [
-            ('Sato-Tate group', data['st_group_link']),
+            ('Sato-Tate group', st_anchor(curve['st_label'])),
             (r'\(\End(J_{\overline{\Q}}) \otimes \R\)', r'\(%s\)' % data['real_geom_end_alg_name']),
             (r'\(\End(J_{\overline{\Q}}) \otimes \Q\)', r'\(%s\)' % data['geom_end_alg_name']),
             (r'\(\End(J) \otimes \Q\)', r'\(%s\)' % data['end_alg_name']),
@@ -847,21 +942,36 @@ class WebG2C(object):
             (r'\(\mathrm{GL}_2\)-type', bool_pretty(data['is_gl2_type'])),
             ]
 
+        if is_curve:
+            self.downloads = [("Underlying data", url_for(".G2C_data", label=data['label']))]
+        else:
+            self.downloads = []
+
         # Friends
         self.friends = friends = []
         if is_curve:
             friends.append(('Isogeny class %s.%s' % (data['slabel'][0], data['slabel'][1]), url_for(".by_url_isogeny_class_label", cond=data['slabel'][0], alpha=data['slabel'][1])))
 
-        # first deal with EC
+        # first deal with ECs and MFs
         ecs = []
+        mfs = []
         if 'split_labels' in data:
             for friend_label in data['split_labels']:
                 if is_curve:
                     ecs.append(("Elliptic curve " + friend_label, url_for_ec(friend_label)))
                 else:
-                    ecs.append(("Isogeny class " + ec_label_class(friend_label), url_for_ec_class(friend_label)))
+                    ecs.append(("Elliptic curve " + ec_label_class(friend_label), url_for_ec_class(friend_label)))
+                try:
+                    cond, iso = ec_label_class(friend_label).split(".")
+                    newform_label = ".".join([cond, str(2), 'a', iso])
+                    mfs.append(("Modular form " + newform_label, url_for("cmf.by_url_newform_label", level=cond, weight=2, char_orbit_label='a', hecke_orbit=iso)))
+                except ValueError:
+                    # means the friend isn't an elliptic curve over Q; adding Hilbert/Bianchi modular forms
+                    # is dealt with via the L-functions instances below
+                    pass
 
         ecs.sort(key=lambda x: key_for_numerically_sort(x[0]))
+        mfs.sort(key=lambda x: key_for_numerically_sort(x[0]))
 
         # then again EC from lfun
         instances = []
@@ -876,10 +986,11 @@ class WebG2C(object):
                                                   int(data["Lhash"])
                                                   )
             ])
+
         exclude = {elt[1].rstrip('/').lstrip('/') for elt in self.friends
                    if elt[1]}
         exclude.add(data['lfunc_url'].lstrip('/L/').rstrip('/'))
-        for elt in ecs + names_and_urls(instances, exclude=exclude):
+        for elt in ecs + mfs + names_and_urls(instances, exclude=exclude):
             # because of the splitting we must use G2C specific code
             add_friend(friends, elt)
         if is_curve:
@@ -930,9 +1041,25 @@ class WebG2C(object):
         code['autQbar'] = {'magma':'AutomorphismGroup(ChangeRing(C,AlgebraicClosure(Rationals()))); IdentifyGroup($1);'}
         code['num_rat_wpts'] = {'magma':'#Roots(HyperellipticPolynomials(SimplifiedModel(C)));'}
         if ratpts:
-            code['rat_pts'] = {'magma': '[' + ','.join(["C![%s,%s,%s]"%(p[0],p[1],p[2]) for p in ratpts['rat_pts']]) + '];' }
+            code['rat_pts'] = {'magma': '[' + ','.join(["C![%s,%s,%s]"%(p[0],p[1],p[2]) for p in ratpts['rat_pts']]) + ']; // minimal model'}
+            code['rat_pts_simp'] = {'magma': '[' + ','.join(["C![%s,%s,%s]"%(p[0],p[1],p[2]) for p in [simplify_hyperelliptic_point(data['min_eqn'], pt) for pt in ratpts['rat_pts']]]) + ']; // simplified model'}
         code['mw_group'] = {'magma':'MordellWeilGroupGenus2(Jacobian(C));'}
         code['two_selmer'] = {'magma':'TwoSelmerGroup(Jacobian(C)); NumberOfGenerators($1);'}
         code['has_square_sha'] = {'magma':'HasSquareSha(Jacobian(C));'}
         code['locally_solvable'] = {'magma':'f,h:=HyperellipticPolynomials(C); g:=4*f+h^2; HasPointsEverywhereLocally(g,2) and (#Roots(ChangeRing(g,RealField())) gt 0 or LeadingCoefficient(g) gt 0);'}
         code['torsion_subgroup'] = {'magma':'TorsionSubgroup(Jacobian(SimplifiedModel(C))); AbelianInvariants($1);'}
+
+        self._code = None
+
+    def get_code(self):
+        if self._code is None:
+
+            # read in code.yaml from current directory:
+            _curdir = os.path.dirname(os.path.abspath(__file__))
+            self._code =  yaml.load(open(os.path.join(_curdir, "code.yaml")), Loader=yaml.FullLoader)
+
+            # Fill in placeholders for this specific curve:
+            for lang in ['magma']: #TODO: 'sage', 'pari', 
+                self._code['curve'][lang] = self._code['curve'][lang] % (self.data['min_eqn'])
+
+        return self._code

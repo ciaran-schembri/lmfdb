@@ -2,14 +2,14 @@
 
 import ast
 import re
-from six import BytesIO
+from io import BytesIO
 import time
 
 from flask import render_template, request, url_for, make_response, redirect, send_file
 from sage.all import QQ, PolynomialRing, PowerSeriesRing, conway_polynomial, prime_range, latex
 
 from lmfdb import db
-from lmfdb.utils import web_latex, parse_ints, search_wrap, flash_error
+from lmfdb.utils import web_latex, parse_ints, search_wrap, flash_error, redirect_no_cache
 from lmfdb.modlmf import modlmf_page
 from lmfdb.modlmf.modlmf_stats import get_stats
 
@@ -17,11 +17,13 @@ modlmf_credit = 'Samuele Anni, Anna Medvedovsky, Bartosz Naskrecki, David Robert
 
 # utilitary functions for displays
 
-def print_q_expansion(list):
-    list = [str(c) for c in list]
-    Qb = PolynomialRing(QQ,'b')
-    Qq = PowerSeriesRing(Qb['a'],'q')
-    return web_latex(Qq([c for c in list]).add_bigoh(len(list)))
+
+def print_q_expansion(lst):
+    lst = [str(c) for c in lst]
+    Qb = PolynomialRing(QQ, 'b')
+    Qq = PowerSeriesRing(Qb['a'], 'q')
+    return web_latex(Qq(lst).add_bigoh(len(lst)))
+
 
 def my_latex(s):
     # This code was copy pasted and should be refactored
@@ -77,9 +79,10 @@ def modlmf_render_webpage():
 
 # Random modlmf
 @modlmf_page.route("/random")
+@redirect_no_cache
 def random_modlmf():
     label = db.modlmf_forms.random()
-    return redirect(url_for(".render_modlmf_webpage", label=label))
+    return url_for(".render_modlmf_webpage", label=label)
 
 modlmf_label_regex = re.compile(r'(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d*)')
 
@@ -191,7 +194,7 @@ def render_modlmf_webpage(**args):
         try:
             pol=str(conway_polynomial(data['characteristic'], data['deg'])).replace('x','a').replace('*','')
             info['field']= pol
-        except:
+        except Exception:
             info['field']=""
 
 
@@ -223,7 +226,7 @@ def render_modlmf_webpage(**args):
 def q_exp_display(label, number):
     try:
         number = int(number)
-    except:
+    except Exception:
         number = 20
     if number < 20:
         number = 20

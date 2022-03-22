@@ -1,10 +1,10 @@
-from __future__ import absolute_import
+
 
 import re
 from flask import url_for
 from collections import defaultdict
 from sage.all import ZZ, QQ, LCM
-from sage.all import (cached_method, ceil, divisors, gcd,
+from sage.all import (cached_method, ceil, gcd,
                       latex, lazy_attribute,
                       matrix, valuation)
 from sage.geometry.newton_polygon import NewtonPolygon
@@ -12,8 +12,9 @@ from sage.geometry.newton_polygon import NewtonPolygon
 from lmfdb import db
 from lmfdb.utils import (
     encode_plot, list_to_factored_poly_otherorder,
-    make_bigint, web_latex)
-from lmfdb.galois_groups.transitive_group import small_group_display_knowl, group_display_knowl_C1_as_trivial
+    make_bigint, web_latex, integer_divisors, integer_prime_divisors)
+from lmfdb.groups.abstract.main import abstract_group_display_knowl
+from lmfdb.galois_groups.transitive_group import transitive_group_display_knowl_C1_as_trivial
 from .plot import circle_image, piecewise_constant_image, piecewise_linear_image
 
 HMF_LABEL_RE = re.compile(r'^A(\d+\.)*\d+_B(\d+\.)*\d+$')
@@ -89,7 +90,7 @@ class WebHyperGeometricFamily(object):
             wh = 0 if m in a else 1
             gamma[wh].append(m)
             subdict(ab[wh], m)
-            for d in divisors(m)[:-1]:
+            for d in integer_divisors(m)[:-1]:
                 if d in ab[wh]:
                     subdict(ab[wh], d)
                 else:
@@ -101,7 +102,7 @@ class WebHyperGeometricFamily(object):
 
     @lazy_attribute
     def wild_primes(self):
-        return LCM(LCM(self.A), LCM(self.B)).prime_divisors()
+        return integer_prime_divisors(LCM(LCM(self.A), LCM(self.B)))
 
 
 
@@ -216,7 +217,7 @@ class WebHyperGeometricFamily(object):
                 two = mnew.split(',')
                 two = [int(j) for j in two]
                 try:
-                    m1[2] = small_group_display_knowl(two[0],two[1])
+                    m1[2] = abstract_group_display_knowl(f"{two[0]}.{two[1]}")
                 except TypeError:
                     m1[2] = 'Gap[%d,%d]' % (two[0],two[1])
             else:
@@ -232,7 +233,7 @@ class WebHyperGeometricFamily(object):
             myA = m1[3][0]
             myB = m1[3][1]
             if not myA and not myB:  # myA = myB = []
-                return [small_group_display_knowl(1, 1), 1]
+                return [abstract_group_display_knowl("1.1", "$C_1$"), 1]
             mono = db.hgm_families.lucky({'A': myA, 'B': myB}, projection="mono")
             if mono is None:
                 return ['??', 1]
@@ -271,7 +272,9 @@ class WebHyperGeometricFamily(object):
                  url_for('hypergm.index') +
                  "?A={}&B={}".format(str(self.A), str(self.B)))]
 
-
+    @lazy_attribute
+    def downloads(self):
+        return [("Underlying data", url_for(".hgm_data", label=self.label))]
 
     @lazy_attribute
     def title(self):
@@ -348,7 +351,7 @@ class WebHyperGeometricFamily(object):
                     gal_groups = ""
                 else:
                     gal_groups = r"$\times$".join(
-                            [group_display_knowl_C1_as_trivial(n, t)
+                            [transitive_group_display_knowl_C1_as_trivial(f"{n}T{t}")
                                 for n, t in gal_groups])
             return [gal_groups, factors, self.ordinary(f, p)]
         return process_euler
@@ -381,16 +384,3 @@ class WebHyperGeometricFamily(object):
             return [('p', p, 't', self.table_euler_factors_p(p)) for p in plist]
         else:
             return [('t', t, 'p', self.table_euler_factors_t(t, plist)) for t in tlist]
-
-
-
-
-
-
-
-
-
-
-
-
-

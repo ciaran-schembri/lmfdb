@@ -85,7 +85,7 @@ print("Collecting statistics on genus and dim attributes...")
 update_attribute_stats(db, 'passports', ['genus'])
 update_attribute_stats(db, 'passports', ['dim'])
 
-# Count unique number of entires
+# Count unique number of entries
 print("Counting number of unique entries for  passport_label and total_label attributes...")
 update_unique_count(db, 'passports', 'passport_label')
 update_unique_count(db, 'passports', 'total_label')
@@ -117,9 +117,9 @@ update_joint_unique_count(db, 'passports', 'dim', 'total_label', prefix='by')
 #  Sort bygenus group counts by group order #
 #############################################
 
-for entry in db.passports.stats.find({'_id' : {'$regex':'^bygenus/\d+/group$'}}):
+for entry in db.passports.stats.find({'_id': {'$regex': r'^bygenus/\d+/group$'}}):
     groups = entry['counts']
-    entry['counts'] = sorted(groups, key=lambda count: map(int, re.findall("\d+", count[0])))
-    db.passports.stats.replace_one({'_id':entry['_id']}, entry)
+    entry['counts'] = sorted(groups, key=lambda count: map(int, re.findall(r"\d+", count[0])))
+    db.passports.stats.replace_one({'_id': entry['_id']}, entry)
 
 C.close()

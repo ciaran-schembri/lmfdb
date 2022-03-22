@@ -1,28 +1,29 @@
 # -*- coding: utf-8 -*-
 # See templates/newform.html for how functions are called
-from __future__ import absolute_import
-from six import string_types
 from collections import defaultdict
-import bisect, re
+import bisect
+import re
 
 from flask import url_for
-from dirichlet_conrey import DirichletGroup_conrey, DirichletCharacter_conrey
+from lmfdb.characters.TinyConrey import ConreyCharacter
 from sage.all import (prime_range, latex, QQ, PolynomialRing, prime_pi, gcd,
                       CDF, ZZ, CBF, cached_method, vector, lcm, RR, lazy_attribute)
 from sage.databases.cremona import cremona_letter_code, class_to_int
 
 from lmfdb import db
 from lmfdb.utils import (
-    coeff_to_poly, coeff_to_power_series, web_latex,
-    web_latex_poly, bigint_knowl, bigpoly_knowl, too_big, make_bigint,
+    coeff_to_power_series,
     display_float, display_complex, round_CBF_to_half_int, polyquo_knowl,
     display_knowl, factor_base_factorization_latex,
-    integer_options, names_and_urls, web_latex_factored_integer, prop_int_pretty)
+    integer_options, names_and_urls, web_latex_factored_integer, prop_int_pretty,
+    integer_squarefree_part,
+    raw_typeset_poly, raw_typeset_poly_factor, raw_typeset_qexp
+)
 from lmfdb.number_fields.web_number_field import nf_display_knowl
 from lmfdb.number_fields.number_field import field_pretty
-from lmfdb.galois_groups.transitive_group import small_group_label_display_knowl
-from lmfdb.sato_tate_groups.main import st_link, get_name
-from .web_space import convert_spacelabel_from_conrey, get_bread, cyc_display, display_hecke_polys
+from lmfdb.groups.abstract.main import abstract_group_display_knowl
+from lmfdb.sato_tate_groups.main import st_display_knowl
+from .web_space import convert_spacelabel_from_conrey, get_bread, cyc_display
 
 LABEL_RE = re.compile(r"^[0-9]+\.[0-9]+\.[a-z]+\.[a-z]+$")
 EMB_LABEL_RE = re.compile(r"^[0-9]+\.[0-9]+\.[a-z]+\.[a-z]+\.[0-9]+\.[0-9]+$")
@@ -119,6 +120,7 @@ def td_wrapr(val):
 def parity_text(val):
     return 'odd' if val == -1 else 'even'
 
+
 class WebNewform(object):
     def __init__(self, data, space=None, all_m = False, all_n = False, embedding_label = None):
         #TODO validate data
@@ -171,12 +173,11 @@ class WebNewform(object):
                     zero = []
                 self.qexp = [zero] + eigenvals['an']
                 self.qexp_prec = len(self.qexp)
-                m = self.field_poly_root_of_unity
                 self.single_generator = self.hecke_ring_power_basis or (self.dim == 2)
                 # This is not enough, for some reason
                 #if (m != 0) and (not self.single_generator):
                 # This is the only thing I could make work:
-                if (m != 0) and (self.hecke_ring_numerators is not None):
+                if (m != 0) and self.field_poly_is_cyclotomic and (self.hecke_ring_numerators is not None):
                     self.convert_qexp_to_cyclotomic(m)
                     self.show_hecke_ring_basis = False
                 else:
@@ -205,9 +206,9 @@ class WebNewform(object):
 
         # lookup twists (of newform orbits or embedded newforms as appropriate)
         if self.embedding_label is None:
-            self.twists = [r for r in db.mf_twists_nf.search({'source_label':self.label})]
+            self.twists = list(db.mf_twists_nf.search({'source_label':self.label}))
         else:
-            self.embedded_twists = [r for r in db.mf_twists_cc.search({'source_label':self.label + '.' + self.embedding_label})]
+            self.embedded_twists = list(db.mf_twists_cc.search({'source_label':self.label + '.' + self.embedding_label}))
             if self.embedded_twists:
                 self.embedded_minimal_twist = self.embedded_twists[0]["twist_class_label"]
 
@@ -316,9 +317,6 @@ class WebNewform(object):
         ns_url = cmf_base + '/'.join(base_label + [char_letter])
         res.append(('Newspace ' + ns_label, ns_url))
         nf_url = ns_url + '/' + self.hecke_orbit_label
-        if self.sato_tate_group:
-            res.append((r'Sato-Tate group \({}\)'.format(get_name(self.sato_tate_group)[0]),
-                        '/SatoTateGroup/' + self.sato_tate_group))
         if self.embedding_label is not None:
             res.append(('Newform orbit ' + self.label, nf_url))
             if (self.dual_label is not None and
@@ -368,17 +366,20 @@ class WebNewform(object):
     def downloads(self):
         downloads = []
         if self.embedding_label is None:
+            label = self.label
             if self.hecke_cutters or self.has_exact_qexp:
-                downloads.append(('Modular form to Magma', url_for('.download_newform_to_magma', label=self.label)))
+                downloads.append(('Modular form to Magma', url_for('.download_newform_to_magma', label=label)))
             if self.has_exact_qexp:
-                downloads.append(('q-expansion to Sage', url_for('.download_qexp', label=self.label)))
-            downloads.append(('Trace form to text', url_for('.download_traces', label=self.label)))
-            if self.has_complex_qexp:
-                downloads.append(('Embeddings to text', url_for('.download_cc_data', label=self.label)))
-                downloads.append(('Satake angles to text', url_for('.download_satake_angles', label=self.label)))
-            downloads.append(('All stored data to text', url_for('.download_newform', label=self.label)))
+                downloads.append(('q-expansion to Sage', url_for('.download_qexp', label=label)))
+            downloads.append(('Trace form to text', url_for('.download_traces', label=label)))
+            #if self.has_complex_qexp:
+            #    downloads.append(('Embeddings to text', url_for('.download_cc_data', label=label)))
+            #    downloads.append(('Satake angles to text', url_for('.download_satake_angles', label=label)))
+            downloads.append(('All stored data to text', url_for('.download_newform', label=label)))
         else:
-            downloads.append(('Coefficient data to text', url_for('.download_embedded_newform', label='%s.%s'%(self.label, self.embedding_label))))
+            label = '%s.%s'%(self.label, self.embedding_label)
+            downloads.append(('Coefficient data to text', url_for('.download_embedded_newform', label=label)))
+        downloads.append(('Underlying data', url_for('.mf_data', label=label)))
         return downloads
 
     @lazy_attribute
@@ -394,13 +395,11 @@ class WebNewform(object):
     def primes_cc_bound(self):
         return prime_pi(self.an_cc_bound)
 
-
     @lazy_attribute
     def one_column_display(self):
         if self.embedding_m:
             an = self.cc_data[self.embedding_m]['an_normalized'].values()
-            return all([x == 0 or y == 0 for x, y in an])
-
+            return all(x == 0 or y == 0 for x, y in an)
 
     def setup_cc_data(self, info):
         """
@@ -479,14 +478,13 @@ class WebNewform(object):
                 self.analytic_shift = {i: RR(i)**((ZZ(self.weight)-1)/2) for i in list(self.cc_data.values())[0]['an_normalized']}
             if format in angles_formats:
                 self.character_values = defaultdict(list)
-                G = DirichletGroup_conrey(self.level)
-                chars = [DirichletCharacter_conrey(G, char) for char in self.conrey_indexes]
+                chars = [ConreyCharacter(self.level, char) for char in self.conrey_indexes]
                 for p in list(self.cc_data.values())[0]['angles']:
                     if p.divides(self.level):
                         self.character_values[p] = None
                         continue
                     for chi in chars:
-                        c = chi.logvalue(p) * self.char_order
+                        c = chi.conreyangle(p) * self.char_order
                         angle = float(c / self.char_order)
                         value = CDF(0,2*CDF.pi()*angle).exp()
                         self.character_values[p].append((angle, value))
@@ -530,9 +528,9 @@ class WebNewform(object):
     def projective_image_knowl(self):
         if self.projective_image:
             gp_name = "C2^2" if self.projective_image == "D2" else ( "S3" if self.projective_image == "D3" else self.projective_image )
-            gp_label = db.gps_small.lucky({'name':gp_name},'label')
-            gp_display = '\\(' + self.projective_image_latex + '\\)'
-            return gp_display if gp_label is None else small_group_label_display_knowl(gp_label,gp_display)
+            gp_label = db.gps_groups.lucky({'name':gp_name}, 'label')
+            gp_display = fr'\({self.projective_image_latex}\)'
+            return gp_display if gp_label is None else abstract_group_display_knowl(gp_label, gp_display)
 
     def field_display(self):
         """
@@ -556,7 +554,7 @@ class WebNewform(object):
         """
         This function is used to display the polynomial defining the coefficient field.
         """
-        return web_latex_poly(self.field_poly)
+        return raw_typeset_poly(self.field_poly)
 
     @property
     def artin_field_display(self):
@@ -577,12 +575,11 @@ class WebNewform(object):
     @property
     def artin_image_display(self):
         if self.artin_image:
-            pretty = db.gps_small.lookup(self.artin_image, projection = 'pretty')
+            pretty = db.gps_groups.lookup(self.artin_image, 'tex_name')
             return pretty if pretty else self.artin_image
-        return None
 
     def artin_image_knowl(self):
-        return small_group_label_display_knowl(self.artin_image)
+        return abstract_group_display_knowl(self.artin_image)
 
     def rm_and_cm_field_knowl(self, sign=1):
         if self.self_twist_discs:
@@ -658,27 +655,27 @@ class WebNewform(object):
         return s%(self.weight, self.level)
 
     def display_hecke_cutters(self):
-        polynomials = [bigpoly_knowl(F, var='T%s'%p) for p,F in self.hecke_cutters]
+        acting_on = f"acting on {self.display_newspace()}"
+        extra = (acting_on + ".") if len(self.hecke_cutters) == 1 else ""
+        polynomials = [raw_typeset_poly(F, var=f'T{p}', extra=extra) for p, F in self.hecke_cutters]
         title = 'linear operator'
         if len(polynomials) > 1:
             title += 's'
         knowl = display_knowl('cmf.hecke_cutter', title=title)
-        desc = "<p>This %s can be constructed as the "%(display_knowl('cmf.newform_subspace','newform subspace'))
+        desc = f"<p>This {display_knowl('cmf.newform_subspace','newform subspace')} can be constructed as the "
         if len(polynomials) > 1:
-            desc += "intersection of the kernels of the following %s acting on %s:</p>\n<table>"
-            desc = desc % (knowl, self.display_newspace())
+            desc += f"intersection of the kernels of the following {knowl} {acting_on}:</p>\n<table>"
             desc += "\n".join("<tr><td>%s</td></tr>" % F for F in polynomials) + "\n</table>"
         elif len(polynomials) == 1:
-            desc += "kernel of the %s %s acting on %s."
-            desc = desc % (knowl, polynomials[0], self.display_newspace())
+            desc += f"kernel of the {knowl} {polynomials[0]}"
         else:
             desc = r"<p>This %s is the entire %s %s.</p> "%(display_knowl('cmf.newform_subspace','newform subspace'),
                                                           display_knowl('cmf.newspace','newspace'),self.display_newspace())
         return desc
 
-    def defining_polynomial(self):
+    def defining_polynomial(self, separator=''):
         if self.field_poly:
-            return web_latex_poly(self.field_poly, superscript=True)
+            return raw_typeset_poly(self.field_poly, superscript=True, extra=separator)
         return None
 
     def Qnu(self):
@@ -692,21 +689,6 @@ class WebNewform(object):
             return ""
         else:
             return r"\(=\)"
-
-    def _make_frac(self, num, den):
-        paren = ('+' in num or '-' in num)
-        if den == 1:
-            return num
-        elif den < 10**8:
-            if paren:
-                return r"\((\)%s\()/%s\)" % (num, den)
-            else:
-                return r"%s\(/%s\)" % (num, den)
-        else:
-            if paren:
-                return r"\((\)%s\()/%s\)" % (num, make_bigint(web_latex(den, enclose=False)))
-            else:
-                return r"%s\(/%s\)" % (num, make_bigint(web_latex(den, enclose=False)))
 
     @property
     def _nu_latex(self):
@@ -749,24 +731,25 @@ class WebNewform(object):
     def _order_basis_forward(self):
         basis = []
         for i, (num, den) in enumerate(zip(self.hecke_ring_numerators, self.hecke_ring_denominators)):
-            numsize = sum(len(str(c)) for c in num if c)
-            if numsize > 80:
-                num = web_latex_poly(num, self._nu_latex, superscript=True)
-            else:
-                num = web_latex(coeff_to_poly(num, self._nu_var))
-            betai = r'\(\beta_{%s}\)'%i
-            basis.append((betai, self._make_frac(num, den)))
+            if i == 0:
+                continue
+            basis.append(
+                (rf'\(\beta_{{{i}}}\)',
+                 raw_typeset_poly(num, denominator=den, var=self._nu_var, superscript=True, final_rawvar='v'))
+            )
         return self._make_table(basis)
 
     def _order_basis_inverse(self):
-        basis = [(r'\(1\)', r'\(\beta_0\)')]
+        basis = []
         for i, (num, den) in enumerate(zip(self.hecke_ring_inverse_numerators[1:], self.hecke_ring_inverse_denominators[1:])):
-            num = web_latex_poly(num, r'\beta', superscript=False)
             if i == 0:
                 nupow = r'\(%s\)' % self._nu_latex
             else:
                 nupow = r'\(%s^{%s}\)' % (self._nu_latex, i+1)
-            basis.append((nupow, self._make_frac(num, den)))
+            basis.append(
+                (nupow,
+                 raw_typeset_poly(num, denominator=den, var='beta', superscript=False, final_rawvar='b'))
+            )
         return self._make_table(basis)
 
     def order_basis(self):
@@ -801,20 +784,6 @@ function switch_basis(btype) {
         else:
             return html % ("", self._order_basis_forward(), self._nu_latex, " nodisplay", self._order_basis_inverse(), self._nu_latex)
 
-    def order_basis_table(self):
-        s = '<table class="ntdata">\n  <tr>\n'
-        for i in range(self.dim):
-            s += r'    <td>\(\nu^{%s}\)</td>\n'%i
-        s += '    <td>Denominator</td>\n  </tr>\n'
-        for num, den in zip(self.hecke_ring_numerators, self.hecke_ring_denominators):
-            s += '  <tr>\n'
-            for coeff in num:
-                s += '    <td>%s</td>\n' % (bigint_knowl(coeff))
-            s += '    <td>%s</td>\n' % (bigint_knowl(den))
-            s += '  </tr>\n'
-        s += '</table>'
-        return s
-
     def order_gen(self):
         if self.field_poly_root_of_unity == 4:
             return r'\(i = \sqrt{-1}\)'
@@ -823,7 +792,7 @@ function switch_basis(btype) {
         elif self.dim == 2:
             c, b, a = map(ZZ, self.field_poly)
             D = b**2 - 4*a*c
-            d = D.squarefree_part()
+            d = integer_squarefree_part(D)
             s = (D//d).isqrt()
             if self.hecke_ring_power_basis:
                 k, l = ZZ(0), ZZ(1)
@@ -861,9 +830,9 @@ function switch_basis(btype) {
     def order_gen_below(self):
         m = self.field_poly_root_of_unity
         if m == 0:
-            return r" in terms of a root \(\nu\) of %s" % self.defining_polynomial()
+            return r" in terms of a root \(\nu\) of %s" % self.defining_polynomial(separator=":")
         elif self.field_poly_is_real_cyclotomic:
-            return r" in terms of \(\nu = \zeta_{%s} + \zeta_{%s}^{-1}\)" % (m, m)
+            return r" in terms of \(\nu = \zeta_{%s} + \zeta_{%s}^{-1}\):" % (m, m)
         else:
             return ""
 
@@ -978,9 +947,59 @@ function switch_basis(btype) {
         twists.extend(['</tbody>', '</table>'])
         return '\n'.join(twists)
 
+    @cached_method
     def display_hecke_char_polys(self, num_disp = 5):
-        return display_hecke_polys([self.label], num_disp)
-      
+        """
+        Display a table of the characteristic polynomials of the Hecke operators
+        for small primes. The number of primes presented by default is 5, although
+        there is a "show more" / "show less" button to display all primes up to 97.
+        The code for the table wrapping, scrolling etc. is common with many others
+        and should be eventually replaced by a call to a single class/function with
+        some parameters.
+
+        INPUT:
+
+        - ``num_disp`` - an integer, the number of characteristic polynomials to display by default.
+        """
+
+        hecke_polys_orbits = defaultdict(list)
+        R = PolynomialRing(ZZ, 'T')
+        for poly_item in db.mf_hecke_charpolys.search({'hecke_orbit_code' : self.hecke_orbit_code}):
+            hecke_polys_orbits[poly_item['p']] += [(R(f), e) for f, e in poly_item['charpoly_factorization']]
+        if not hecke_polys_orbits:
+            return None
+        polys = ['<div style="max-width: 100%; overflow-x: auto;">',
+                 '<table class="ntdata">', '<thead>', '  <tr>',
+                 th_wrap('p', '$p$'),
+                 th_wrap('charpoly', '$F_p(T)$'),
+                 '  </tr>', '</thead>', '<tbody>']
+        loop_count = 0
+        for p, factorisation in hecke_polys_orbits.items():
+            factorisation.sort(key=lambda elt: (elt[0].degree(), elt[1]))
+            charpoly = raw_typeset_poly_factor(factorisation, decreasing=True)
+            if loop_count < num_disp:
+                polys.append('  <tr>')
+            else:
+                polys.append('  <tr class="more nodisplay">')
+            polys.extend([td_wrapl('${}$'.format(p)), '<td>' + charpoly + '</td>'])
+            polys.append('  </tr>')
+            loop_count += 1
+        if loop_count > num_disp:
+            polys.append('''
+                <tr class="less toggle">
+                    <td colspan="{{colspan}}">
+                      <a onclick="show_moreless(&quot;more&quot;); return true" href="#moreep">show more</a>
+                    </td>
+                </tr>
+                <tr class="more toggle nodisplay">
+                    <td colspan="{{colspan}}">
+                      <a onclick="show_moreless(&quot;less&quot;); return true" href="#eptable">show less</a>
+                    </td>
+                </tr>
+                ''')
+            polys.extend(['</tbody>', '</table>', '</div>'])
+        return '\n'.join(polys)
+
     def display_twists(self):
         if not self.twists:
             return '<p>Twists of this newform have not been computed.</p>'
@@ -1000,7 +1019,7 @@ function switch_basis(btype) {
                   th_wrap('cmf.dimension', 'Dim'),
                   '</tr>', '</thead>', '<tbody>']
 
-        for r in  sorted(self.twists, key = lambda x : [x['conductor'],x['twisting_char_orbit'],x['target_level'],x['target_char_orbit'],x['target_hecke_orbit']]):
+        for r in sorted(self.twists, key=lambda x: [x['conductor'], x['twisting_char_orbit'], x['target_level'], x['target_char_orbit'], x['target_hecke_orbit']]):
             minimality = '&check;' if r['target_label'] == self.minimal_twist else 'yes' if r['target_is_minimal'] else ''
             char_link = display_knowl('character.dirichlet.orbit_data', title=r['twisting_char_label'], kwargs={'label':r['twisting_char_label']})
             target_link = '<a href="%s">%s</a>'%('/ModularForm/GL2/Q/holomorphic/' + r['target_label'].replace('.','/'),r['target_label'])
@@ -1057,7 +1076,7 @@ function switch_basis(btype) {
                   th_wrap('character.dirichlet.order', 'Ord'),
                   th_wrap('cmf.self_twist_field', 'Type'),
                   th_wrap('cmf.twist', 'Twist'),
-                  th_wrap('cmf.twist_minimality', 'Min'),
+                  th_wrap('cmf.twist_minimal', 'Min'),
                   th_wrap('cmf.dimension', 'Dim'),
                   '</tr>', '</thead>', '<tbody>']
 
@@ -1074,7 +1093,7 @@ function switch_basis(btype) {
         twists2 = ['<table class="ntdata" style="float: left">', '<thead>',
                    '<tr><th colspan=8>&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;By %s</th></tr>'% display_knowl('cmf.twist','twisted newform'), '<tr>',
                   th_wrap('cmf.twist', 'Twist'),
-                  th_wrap('cmf.twist_minimality', 'Min'),
+                  th_wrap('cmf.twist_minimal', 'Min'),
                   th_wrap('cmf.dimension', 'Dim'),
                   th_wrap('character.dirichlet.conrey', 'Char'),
                   th_wrap('character.dirichlet.parity', 'Parity'),
@@ -1095,43 +1114,7 @@ function switch_basis(btype) {
         return '\n'.join(twists1) + '\n<div style="float: left">&emsp;&emsp;&emsp;&emsp;</div>\n' + '\n'.join(twists2) + '\n<br clear="all" />\n'
 
     def sato_tate_display(self):
-        if self.sato_tate_group:
-            return st_link(self.sato_tate_group)
-        else:
-            return ''
-
-    def eigs_as_seqseq_to_qexp(self, prec_max):
-        # Takes a sequence of sequence of integers (or pairs of integers in the hecke_ring_cyclotomic_generator != 0 case) and returns a string for the corresponding q expansion
-        # For example, eigs_as_seqseq_to_qexp([[0,0],[1,3]]) returns "\((1+3\beta_{1})q\)\(+O(q^2)\)"
-        prec = min(self.qexp_prec, prec_max)
-        if prec == 0:
-            return 'O(1)'
-        eigseq = self.qexp[:prec]
-        use_knowl = too_big(eigseq, 10**24)
-        s = ''
-        for j in range(len(eigseq)):
-            term = self._elt(eigseq[j])
-            if term != 0:
-                latexterm = latex(term)
-                if use_knowl:
-                    latexterm = make_bigint(latexterm)
-                if term.number_of_terms() > 1:
-                    latexterm = r"(" +  latexterm + r")"
-                if j > 0:
-                    if term == 1:
-                        latexterm = ''
-                    elif term == -1:
-                        latexterm = '-'
-                    if j == 1:
-                        latexterm += ' q'
-                    else:
-                        latexterm += ' q^{%d}' % j
-                if s != '' and latexterm[0] != '-':
-                    latexterm = '+' + latexterm
-                s += '' + latexterm + ' '
-        # Work around bug in Sage's latex
-        s = s.replace('betaq', 'beta q')
-        return r'\(' + s + r'+O(q^{%d})\)' % prec
+        return st_display_knowl(self.sato_tate_group) if self.sato_tate_group else ''
 
     def q_expansion_cc(self, prec_max):
         eigseq = self.cc_data[self.embedding_m]['an_normalized']
@@ -1162,20 +1145,33 @@ function switch_basis(btype) {
             return self.q_expansion_cc(prec_max)
         elif self.has_exact_qexp:
             prec = min(self.qexp_prec, prec_max)
-            if self.dim == 1:
-                s = web_latex(coeff_to_power_series([self.qexp[n][0] for n in range(prec)],prec=prec),enclose=True)
+            m = self.hecke_ring_cyclotomic_generator
+            if m is not None and m != 0:
+                # sum of powers of zeta_m
+                # convert into a normal representation
+                def to_list(data):
+                    if not data:
+                        return []
+                    out = [0]*(max(e for _, e in data) + 1)
+                    for c, e in data:
+                        out[e] = c
+                    return out
+                coeffs = [to_list(data) for data in self.qexp[:prec]]
+                return raw_typeset_qexp(coeffs, superscript=True, var=self._zeta_print, final_rawvar='z')
+            elif self.single_generator:
+                var = str(self._PrintRing.gen(0))
+                return raw_typeset_qexp(self.qexp[:prec], superscript=True, var=var, final_rawvar=var[0])
             else:
-                s = self.eigs_as_seqseq_to_qexp(prec)
-            return s
+                # in this case str(self._PrintRing.gen(0)) = beta1
+                # and thus the extra case
+                return raw_typeset_qexp(self.qexp[:prec])
+
         else:
             return coeff_to_power_series([0,1], prec=2)._latex_()
 
     def trace_expansion(self, prec_max=10):
         prec = min(self.texp_prec, prec_max)
-        s = web_latex(coeff_to_power_series(self.texp[:prec], prec=prec), enclose=True)
-        if too_big(self.texp[:prec], 10**24):
-            s = make_bigint(s)
-        return s
+        return raw_typeset_qexp([[elt] for elt in self.texp[:prec]])
 
     def embed_header(self, n, format='embed'):
         if format == 'embed':
@@ -1200,7 +1196,7 @@ function switch_basis(btype) {
         return '/ModularForm/GL2/Q/holomorphic/' + self.label.replace('.','/') + "/{c}/{e}/".format(c=self.cc_data[m]['conrey_index'], e=((m-1)%self.rel_dim)+1)
 
     def embedding_from_embedding_label(self, elabel):
-        if not isinstance(elabel, string_types): # match object
+        if not isinstance(elabel, str):  # match object
             elabel = elabel.group(0)
         c, e = map(int, elabel.split('.'))
         if e <= 0 or e > self.rel_dim:

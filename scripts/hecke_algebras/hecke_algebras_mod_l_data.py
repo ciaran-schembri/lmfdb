@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-""" Complete the entries for l aidc orbits of Hecke algebra adding stucture data if needed.
+""" Complete the entries for l adic orbits of Hecke algebra adding structure data if needed.
 
 Author: Samuele Anni
 """
-from __future__ import print_function
+
 import os
 
 from pymongo.mongo_client import MongoClient

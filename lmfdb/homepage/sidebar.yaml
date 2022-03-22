@@ -17,34 +17,12 @@
   type: simple
   heading:
     title: L-functions
-    url_for: "l_functions"
+    url_for: "l_functions.contents"
   parts:
-    - title: "Degree 1"
-      url_for: "l_functions.l_function_degree_page"
-      url_args:
-        degree: 'degree1'
-    - title: "Degree 2"
-      url_for: "l_functions.l_function_degree_page"
-      url_args:
-        degree: 'degree2'
-    - title: "Degree 3"
-      url_for: "l_functions.l_function_degree_page"
-      url_args:
-        degree: 'degree3'
-    - title: "Degree 4"
-      url_for: "l_functions.l_function_degree_page"
-      url_args:
-        degree: 'degree4'
-    - title: $\zeta$&nbsp;zeros
-      url_for: "zeta zeros.zetazeros"
-    - title: First zeros
-      url_for: "first L-function zeros.firstzeros"
-      status: beta
-    - title: Operations
-      url_for: "tensor_products.index"
-      status: future
-    - title: Local L-functions
-      status: future
+    - title: "Rational"
+      url_for: "l_functions.rational"
+    - title: "All"
+      url_for: "l_functions.index"
 
 3ModForm:
   type: simple
@@ -218,12 +196,13 @@
   - title: Sato-Tate groups
     url_for: "st.index"
     colspan: onecolumn
+  - title: Abstract groups
+    url_for: "abstract.index"
+    status: beta
+    colspan: onecolumn
   - title: Lattices
     url_for: "lattice.lattice_render_webpage"
     status: beta
-    colspan: onecolumn
-  - title: Small groups
-    status: future
     colspan: onecolumn
   - title: Finite subgroups of
     part2:
@@ -231,17 +210,20 @@
         status:  future
       - title: $\GL(n,\Z)$
         status: future
+      - title: $\GL(n,\Q)$
+        url_for: "glnQ.index"
+        status:  future
       - title: $\GL(n,\C)$
+        url_for: "glnC.index"
         status:  future
     status: future
     colspan: onecolumn
 
-8Inv:
+9API:
   type: single
-  status: beta
   heading:
-    title: Inventory
-    url_for: "inventory_app.show_edit_root"
+    title: Database
+    url_for: "API.index"
     type: knowl
 
 ...

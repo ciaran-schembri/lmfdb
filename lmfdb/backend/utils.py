@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function, absolute_import
-import sys, re
+
+import sys
+import re
 from collections import defaultdict
 
 from psycopg2.sql import SQL, Identifier, Placeholder
+from psycopg2 import __version__ as pg_ver_str
+
+psycopg2_version = pg_ver_str.split(" ")[0].split(".")[:3]
+if len(psycopg2_version) < 3:
+    psycopg2_version += ["0"] * (3 - len(psycopg2_version))
+psycopg2_version = tuple(int(c) for c in psycopg2_version)
+
 
 class SearchParsingError(ValueError):
     """
@@ -52,7 +60,7 @@ def filter_sql_injection(clause, col, col_type, op, table):
     # * The only other allowed characters are +-*^/().
     # * We also prohibit --, /* and */ since these are comments in SQL
     clause = re.sub(r"\s+", "", clause)
-    # It's possible that some search columns include numbers (2adic_gens in ec_curves for example)
+    # It's possible that some search columns include numbers (dim1_factor in av_fq_isog for example)
     # However, we don't support columns that are entirely numbers (such as some in smf_dims)
     # since there's no way to distinguish them from integers
     # We also want to include periods as part of the word/number character set, since they can appear in floats
@@ -82,10 +90,9 @@ def filter_sql_injection(clause, col, col_type, op, table):
                 raise SearchParsingError("%s: invalid characters %s (only +*-/^() allowed)" % (clause, piece))
     return SQL("{0} %s {1}" % op).format(col, SQL("").join(processed)), values
 
-
 def IdentifierWrapper(name, convert=True):
     """
-    Returns a composable representing an SQL identifer.
+    Returns a composable representing an SQL identifier.
 
     This is  wrapper for psycopg2.sql.Identifier that supports ARRAY slicers
     and coverts them (if desired) from the Python format to SQL,

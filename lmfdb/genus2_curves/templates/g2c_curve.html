@@ -137,11 +137,13 @@ function show_eqns(invstyle) {
     </tr>
 </table>
 
-
 <h2> {{ KNOWL('g2c.all_rational_points','Rational points') }} </h2>
 
-<p>{{ data.rat_pts_table | safe }}</p>
-<p>{{place_code('rat_pts')}}</p>
+<div class='min_eqn'>{{ data.rat_pts_table | safe }}</div>
+<div class='proj_eqn nodisplay'><td>{{ data.rat_pts_table | safe }}</div>
+<div class='simp_eqn nodisplay'><td>{{ data.rat_pts_simple_table | safe }}</div>
+
+<p>{{place_code('rat_pts')}}{{place_code('rat_pts_simp')}}</p>
 
 <p>Number of rational {{ KNOWL('g2c.num_rat_wpts', 'Weierstrass points') }}: \({{data.num_rat_wpts}}\)</p>
 <p>{{place_code('num_rat_wpts')}}</p>
@@ -158,7 +160,9 @@ function show_eqns(invstyle) {
 <p>{{place_code('mw_group')}}</p>
 
 {% if data.mw_gens_table %}
-<p>{{ data.mw_gens_table | safe }}</p>
+<div class='min_eqn'>{{ data.mw_gens_table | safe }}</div>
+<div class='proj_eqn nodisplay'><td>{{ data.mw_gens_table | safe }}</div>
+<div class='simp_eqn nodisplay'><td>{{ data.mw_gens_simple_table | safe }}</div>
 {% endif %}
 
 <p>{{ KNOWL('g2c.two_torsion_field', '2-torsion field') }}: {{data.two_torsion_field_knowl|safe}}</p>
@@ -192,6 +196,11 @@ function show_eqns(invstyle) {
 <h2> {{KNOWL('g2c.local_invariants', 'Local invariants')}} </h2>
 
 <p>{{ data.local_table | safe }}</p>
+
+<h2> {{KNOWL('g2c.galois_rep', 'Galois representations')}} </h2>
+
+<p>For primes $\ell \le 3$, the image of the {{KNOWL('g2c.galois_rep', 'mod-$\ell$ Galois representation')}} is listed in the table below, whenever it is not the maximal image $\GSp(4,\F_\ell)$ </p>
+<p>{{ data.galrep_table | safe }}</p>
 
 <h2> {{KNOWL('g2c.st_group', 'Sato-Tate group') }} </h2>
 
