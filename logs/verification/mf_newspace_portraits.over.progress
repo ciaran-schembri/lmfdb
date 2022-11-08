@@ -1,0 +1,6 @@
+mf_newspace_portraits.check_hecke_orbit_code (check 1/3) started at 2022-11-08 12:52:56.454941
+mf_newspace_portraits.check_hecke_orbit_code finished after 0.00s
+mf_newspace_portraits.check_label (check 2/3) started at 2022-11-08 12:52:56.455795
+mf_newspace_portraits.check_label finished after 0.44s
+mf_newspace_portraits.check_uniqueness_constraints (check 3/3) started at 2022-11-08 12:52:56.893336
+mf_newspace_portraits.check_uniqueness_constraints finished after 0.00s

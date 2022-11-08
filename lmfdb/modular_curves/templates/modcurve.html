@@ -11,7 +11,7 @@
   <tr><td>{{ KNOWL("modcurve.cusps", "Cusps") }}:</td><td> ${{curve.cusps}}$</td></tr>
 {# {% <tr><td>{{ KNOWL("modcurve.ell_points_order_2", "Elliptic points of order $2$") }}:</td><td> ${{curve.nu2}}$</td></tr> %} #}
 {# {% <tr><td>{{ KNOWL("modcurve.ell_points_order_3", "Elliptic points of order $3$") }}:</td><td> ${{curve.nu3}}$</td></tr> %} #}
-<tr><td>{{ KNOWL("modcurve.ell_points", "Elliptic points") }}:</td> <td> ${{curve.nu2}}$ of order $2$ and ${{curve.nu3}}$ of order $3$ </td></tr>
+<tr><td>{{ KNOWL("modcurve.elliptic_points", "Elliptic points") }}:</td> <td> ${{curve.nu2}}$ of order $2$ and ${{curve.nu3}}$ of order $3$ </td></tr>
   <tr><td>{{ KNOWL('modcurve.rank', 'Analytic rank') }}:</td><td> ${{ curve.rank }}$ </td></tr>
   <tr><td>{{ KNOWL("modcurve.gonality", "$\Q$-gonality")}}:</td><td> ${{ curve.gonality if curve.gonality > 0 else "%s \\le \\gamma \\le %s"%(curve.gonality_bounds[0],curve.gonality_bounds[1]) }}$ </td></tr>
   <tr><td>{{ KNOWL("modcurve.cusps", "Rational cusps") }}:</td><td> ${{ curve.rational_cusps }}$ </td></tr>
@@ -164,7 +164,7 @@
   where the projective coordinates $(E_4:E_6)$ of weights $4$ and $6$ are as follows
   {% else %}
   {% if codomain_label == "1.1.0.1" and codomain_model_type == 1 %}
-  {{ KNOWL('modcurve.j_invariant_map', '$j$-invariant map') }}  
+  {{ KNOWL('modcurve.j_invariant_map', '$j$-invariant map') }}
   {% else %}
   Map
   {% endif %}
