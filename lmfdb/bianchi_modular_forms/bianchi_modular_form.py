@@ -9,7 +9,7 @@ from lmfdb.utils import (
     to_dict, web_latex_ideal_fact, flash_error, comma, display_knowl,
     nf_string_to_label, parse_nf_string, parse_noop, parse_start, parse_count, parse_ints, parse_primes,
     SearchArray, TextBox, SelectBox, ExcludeOnlyBox, CountBox, SubsetBox, TextBoxWithSelect,
-    teXify_pol, search_wrap)
+    teXify_pol, search_wrap, Downloader)
 from lmfdb.utils.display_stats import StatsDisplay, totaler, proportioners
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.utils.search_columns import SearchColumns, ProcessedCol, MultiProcessedCol
@@ -54,20 +54,21 @@ def cm_info(cm):
     except TypeError:
         return str(cm)
 
+
 @bmf_page.route("/")
 def index():
     """Function to deal with the base URL
     /ModularForm/GL2/ImaginaryQuadratic.  If there are no request.args
-    we display the browse and serch page, otherwise (as happens when
+    we display the browse and search page, otherwise (as happens when
     submitting a jump or search button from that page) we hand over to
     the function bianchi_modular_form_search().
     """
     info = to_dict(request.args, search_array=BMFSearchArray(), stats=BianchiStats())
     if not request.args:
-        gl2_fields = ["2.0.{}.1".format(d) for d in [4,8,3,7,11,19,43,67,163, 23,31]]
-        sl2_fields = gl2_fields + ["2.0.{}.1".format(d) for d in [20]]
-        gl2_names = [r"\(\Q(\sqrt{-%s})\)" % d for d in [1,2,3,7,11,19,43,67,163, 23,31]]
-        sl2_names = [r"\(\Q(\sqrt{-%s})\)" % d for d in [4,8,3,7,11,19,43,67,163,5]]
+        gl2_fields = ["2.0.{}.1".format(d) for d in [4,8,3,20,24,7,40,11,52,56,15,68,19,84,88,23]]#,31,35,39,43,47,51,53,55,59,67,71,79,83,87,91,95,163]]
+        sl2_fields = ["2.0.{}.1".format(d) for d in [4,8,3,20,7,11,19,43,67,163]]
+        gl2_names = [r"\(\Q(\sqrt{-%s})\)" % d for d in [1,2,3,5,6,7,10,11,13,14,15,17,19,21,22,23]]#,31,35,39,43,47,51,53,55,59,67,71,79,83,87,91,95,163]]
+        sl2_names = [r"\(\Q(\sqrt{-%s})\)" % d for d in [1,2,3,5,7,11,19,43,67,163]]
         info['gl2_field_list'] = [{'url':url_for("bmf.render_bmf_field_dim_table_gl2", field_label=f), 'name':n} for f,n in zip(gl2_fields,gl2_names)]
         info['sl2_field_list'] = [{'url':url_for("bmf.render_bmf_field_dim_table_sl2", field_label=f), 'name':n} for f,n in zip(sl2_fields,sl2_names)]
         info['field_forms'] = [{'url':url_for("bmf.index", field_label=f), 'name':n} for f,n in zip(gl2_fields,gl2_names)]
@@ -129,15 +130,14 @@ def url_for_label(label):
 
 bmf_columns = SearchColumns([
     ProcessedCol("field_label", "nf", "Base field",
-                 lambda fld: nf_display_knowl(fld, field_pretty(fld)),
-                 default=True),
+                 lambda fld: nf_display_knowl(fld, field_pretty(fld))),
     MultiProcessedCol("level", "mf.bianchi.level", "Level", ["field_label", "level_label"],
                       lambda fld, lvl: '<a href="{}">{}</a>'.format(
                           url_for("bmf.render_bmf_space_webpage",
                                   field_label=fld,
                                   level_label=lvl),
                           lvl),
-                      default=True), # teXify_pol(v['level_ideal'])
+                      download_col="level_label"),
     MultiProcessedCol("label", "mf.bianchi.labels", "Label", ["field_label", "level_label", "label_suffix", "short_label"],
                       lambda fld, lvl, suff, short: '<a href="{}">{}</a>'.format(
                           url_for("bmf.render_bmf_webpage",
@@ -145,23 +145,20 @@ bmf_columns = SearchColumns([
                                   level_label=lvl,
                                   label_suffix=suff),
                           short),
-                      default=True),
+                      download_col="short_label"),
     # See Issue #4170
-    #MathCol("dimension", "mf.bianchi.newform", "Dimension", default=True),
+    #MathCol("dimension", "mf.bianchi.newform", "Dimension"),
     ProcessedCol("sfe", "mf.bianchi.sign", "Sign",
                  lambda v: "$+1$" if v == 1 else ("$-1$" if v == -1 else ""),
-                 default=True, align="center"),
-    ProcessedCol("bc", "mf.bianchi.base_change", "Base change", bc_info, default=True, align="center"),
-    ProcessedCol("CM", "mf.bianchi.cm", "CM", cm_info, default=True, short_title="CM", align="center")])
-
-bmf_columns.dummy_download = True
-
+                 align="center"),
+    ProcessedCol("bc", "mf.bianchi.base_change", "Base change", bc_info, align="center"),
+    ProcessedCol("CM", "mf.bianchi.cm", "CM", cm_info, short_title="CM", align="center")])
 
 @search_wrap(table=db.bmf_forms,
              title='Bianchi modular form search results',
              err_title='Bianchi modular forms search input error',
              columns=bmf_columns,
-             shortcuts={'jump': bianchi_modular_form_jump},
+             shortcuts={'jump': bianchi_modular_form_jump, 'download': Downloader(db.bmf_forms)},
              bread=lambda:get_bread("Search results"),
              url_for_label=url_for_label,
              learnmore=learnmore_list,
@@ -258,7 +255,7 @@ def bmf_field_dim_table(**args):
     if level_flag == 'all':
         query[gl_or_sl] = {'$exists': True}
     else:
-        # Only get records where the cuspdial/new dimension is positive for some weight
+        # Only get records where the cuspidal/new dimension is positive for some weight
         totaldim = gl_or_sl.replace('dims', level_flag) + '_totaldim'
         query[totaldim] = {'$gt': 0}
     t = ' '.join(['Dimensions of spaces of {} Bianchi modular forms over'.format(info['group']), pretty_field_label])
@@ -282,12 +279,11 @@ def bmf_field_dim_table(**args):
     weights = set()
     for dat in data:
         weights = weights.union(set(dat[gl_or_sl].keys()))
-    weights = list([int(w) for w in weights])
-    weights.sort()
+    weights = sorted([int(w) for w in weights])
     info['weights'] = weights
     info['nweights'] = len(weights)
 
-    data.sort(key = lambda x: [int(y) for y in x['level_label'].split(".")])
+    data.sort(key=lambda x: [int(y) for y in x['level_label'].split(".")])
     dims = {}
     for dat in data:
         dims[dat['level_label']] = d = {}
@@ -310,16 +306,18 @@ def bmf_field_dim_table(**args):
 def render_bmf_space_webpage(field_label, level_label):
     info = {}
     t = "Bianchi modular forms of level %s over %s" % (level_label, field_label)
-    bread = get_bread([
-        (field_pretty(field_label), url_for(".render_bmf_field_dim_table_gl2", field_label=field_label)),
-        (level_label, '')])
+    bread = get_bread()
     friends = []
     properties = []
     downloads = []
 
     if not field_label_regex.match(field_label):
         flash_error("%s is not a valid label for an imaginary quadratic field", field_label)
+        return redirect(url_for(".index"))
     else:
+        bread = get_bread([
+            (field_pretty(field_label), url_for(".render_bmf_field_dim_table_gl2", field_label=field_label)),
+            (level_label, '')])
         pretty_field_label = field_pretty(field_label)
         if not db.bmf_dims.exists({'field_label': field_label}):
             info['err'] = "no dimension information exists in the database for field %s" % pretty_field_label
@@ -439,7 +437,7 @@ def download_bmf_magma(**args):
 
     outstr += 'NN := ideal<ZF | {}>;\n\n'.format(set(f.level.gens()))
 
-    outstr += 'primesArray := [\n' + ','.join([str(st).replace(' ', '') for st in prime_gens]).replace('],[',
+    outstr += 'primesArray := [\n' + ','.join(str(st).replace(' ', '') for st in prime_gens).replace('],[',
                                                                                        '],\n[') + '];\n'
     outstr += 'primes := [ideal<ZF | {F!x : x in I}> : I in primesArray];\n\n'
 
@@ -453,7 +451,6 @@ def download_bmf_magma(**args):
     outstr += '\nheckeEigenvaluesList := [*\n'+ ',\n'.join(hecke_eigs_processed) + '\n*];\n'
     outstr += '\nheckeEigenvalues := AssociativeArray();\n'
     outstr += 'for i in [1..#heckeEigenvaluesList] do\n    heckeEigenvalues[primes[i]] := heckeEigenvaluesList[i];\nend for;\n'
-
 
     if f.have_AL:
         AL_eigs    = f.AL_table_data
@@ -566,7 +563,7 @@ def download_bmf_sage(**args):
 
     outstr += 'NN = ZF.ideal({})\n\n'.format(f.level.gens())
 
-    outstr += 'primes_array = [\n' + ','.join([str(st).replace(' ', '') for st in prime_gens]).replace('],[',
+    outstr += 'primes_array = [\n' + ','.join(str(st).replace(' ', '') for st in prime_gens).replace('],[',
                                                                                        '],\\\n[') + ']\n'
     outstr += 'primes = [ZF.ideal(I) for I in primes_array]\n\n'
 
@@ -697,13 +694,13 @@ def labels_page():
 
 class BMFSearchArray(SearchArray):
     noun = "form"
-    plural_noun = "forms"
     sorts = [("", "level norm", ['level_norm', 'label']),
              ("field", "field", ['field_deg', ('field_disc', -1), 'level_norm', 'label'])]
     jump_example = "2.0.4.1-65.2-a"
     jump_egspan = "e.g. 2.0.4.1-65.2-a (single form) or 2.0.4.1-65.2 (space of forms at a level)"
     jump_prompt = "Label"
     jump_knowl = "mf.bianchi.search_input"
+
     def __init__(self):
         field = TextBox(
             name='field_label',
@@ -866,4 +863,4 @@ class BianchiStats(StatsDisplay):
 
     @property
     def short_summary(self):
-        return r'The database currently contains %s %s of weight 2 over the nine imaginary quadratic fields of class number one.  Here are some <a href="%s">further statistics</a>.' % (comma(self.nforms), display_knowl("mf.bianchi.bianchimodularforms", "Bianchi modular forms"), url_for(".statistics"))
+        return r'The database currently contains %s %s of weight 2 over %s imaginary quadratic fields.  Here are some <a href="%s">further statistics</a>.' % (comma(self.nforms), display_knowl("mf.bianchi.bianchimodularforms", "Bianchi modular forms"), self.nformfields, url_for(".statistics"))

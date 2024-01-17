@@ -43,13 +43,13 @@ class UtilsTest(unittest2.TestCase):
         Checking utility: an_list
         """
         # (1 - 2^{-s})^{-1} (1 - 3^{-s})^{-1}
-        euler1 = lambda p: [1, -1] if p <= 3 else [1,0]
+        def euler1(p): return [1, -1] if p <= 3 else [1,0]
         t1 = an_list(euler1, upperbound=20)
         expect1 = [1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0]
         self.assertEqual(t1, expect1)
 
         # (1 + 2^{-s})^{-1} (1 + 3^{-s})^{-1}
-        euler2 = lambda p: [1, 1] if p <= 3 else [1,0]
+        def euler2(p): return [1, 1] if p <= 3 else [1,0]
         t2 = an_list(euler2, upperbound=20)
         expect2 = [1, -1, -1, 1, 0, 1, 0, -1, 1, 0, 0, -1, 0, 0, 0, 1, 0, -1, 0, 0]
         self.assertEqual(t2, expect2)
@@ -122,7 +122,7 @@ class UtilsTest(unittest2.TestCase):
         Checking utility: signtocolour
         """
         self.assertEqual(signtocolour(0), 'rgb(63,63,255)')
-        self.assertEqual(signtocolour(1+2j), 'rgb(197,0,184)')
+        self.assertEqual(signtocolour("1+2*I"), 'rgb(197,0,184)')
 
     def test_rgbtohex(self):
         r"""

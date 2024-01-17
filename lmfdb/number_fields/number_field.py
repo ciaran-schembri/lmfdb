@@ -1,30 +1,26 @@
 # -*- coding: utf-8 -*-D
 
-import ast
 import os
 import re
-from io import BytesIO
 
-import time
-
-from flask import abort, render_template, request, url_for, redirect, send_file, make_response, Markup
+from flask import abort, render_template, request, url_for, redirect, send_file, make_response
+from markupsafe import Markup
 from sage.all import ZZ, QQ, PolynomialRing, NumberField, latex, prime_range, RealField, log
-
 from lmfdb import db
 from lmfdb.app import app
 from lmfdb.utils import (
     web_latex, to_dict, coeff_to_poly, pol_to_html, comma, format_percentage,
-    flash_error, display_knowl, CountBox, prop_int_pretty,
-    SearchArray, TextBox, YesNoBox, YesNoMaybeBox, SubsetNoExcludeBox, 
+    flash_error, display_knowl, CountBox, Downloader, prop_int_pretty,
+    SearchArray, TextBox, YesNoBox, YesNoMaybeBox, SubsetNoExcludeBox,
     SubsetBox, TextBoxWithSelect, parse_bool_unknown, parse_posints,
     clean_input, nf_string_to_label, parse_galgrp, parse_ints, parse_bool,
     parse_signed_ints, parse_primes, parse_bracketed_posints, parse_nf_string,
     parse_floats, parse_subfield, search_wrap, parse_padicfields,
-    raw_typeset, raw_typeset_poly, flash_info, input_string_to_poly, 
-    raw_typeset_int, compress_poly_Q)
+    raw_typeset, raw_typeset_poly, flash_info, input_string_to_poly,
+    raw_typeset_int, compress_poly_Q, compress_polynomial)
 from lmfdb.utils.web_display import compress_int
 from lmfdb.utils.interesting import interesting_knowls
-from lmfdb.utils.search_columns import SearchColumns, SearchCol, CheckCol, MathCol, ProcessedCol, MultiProcessedCol
+from lmfdb.utils.search_columns import SearchColumns, SearchCol, CheckCol, MathCol, ProcessedCol, MultiProcessedCol, CheckMaybeCol, PolynomialCol
 from lmfdb.api import datapage
 from lmfdb.galois_groups.transitive_group import (
     cclasses_display_knowl,character_table_display_knowl,
@@ -34,11 +30,11 @@ from lmfdb.galois_groups.transitive_group import (
 from lmfdb.number_fields import nf_page, nf_logger
 from lmfdb.number_fields.web_number_field import (
     field_pretty, WebNumberField, nf_knowl_guts, factor_base_factor,
-    factor_base_factorization_latex, formatfield)
+    factor_base_factorization_latex, fake_label, formatfield)
 
 assert nf_logger
 
-bread_prefix = lambda: [('Number fields', url_for(".number_field_render_webpage"))]
+def bread_prefix(): return [('Number fields', url_for(".number_field_render_webpage"))]
 
 Completename = 'Completeness of the data'
 dnc = 'data not computed'
@@ -52,6 +48,20 @@ init_nf_flag = False
 # For imaginary quadratic field class group data
 class_group_data_directory = os.path.expanduser('~/data/class_numbers')
 
+class ClassGroupCol(MathCol):
+    def display(self, rec):
+        x = self.get(rec)
+        return x if isinstance(x, str) else f'${x}$'
+
+class DiscriminantCol(MultiProcessedCol):
+    def display(self, rec):
+        D = ZZ(rec['disc_abs']) * ZZ(rec['disc_sign'])
+        s = r'-\,' if D < 0 else ''
+        D = factor_base_factorization_latex(factor_base_factor(D,rec['ramps']), cutoff=30)
+        return '$' + s + D + '$'
+
+    def download(self, rec):
+        return ZZ(rec['disc_abs']) * ZZ(rec['disc_sign'])
 
 def init_nf_count():
     global nfields, init_nf_flag, max_deg
@@ -90,7 +100,7 @@ def fixed_prec(r, digs=3):
     head = int(n[:-digs])
     if head >= 10**4:
         head = comma(head, r'\,')
-    print(head)
+    #print(head)
     return str(head) + '.' + n[-digs:]
 
 
@@ -99,6 +109,11 @@ def ctx_galois_groups():
     return {'galois_group_data': galois_group_data,
             'group_cclasses_data': group_cclasses_data,
             'group_character_table_data': group_character_table_data}
+
+
+@app.context_processor
+def ctx_raw_typeset():
+    return {'raw_typeset': raw_typeset}
 
 
 @app.context_processor
@@ -132,7 +147,6 @@ def poly_to_field_label(pol):
     except Exception:
         return None
 
-
 @nf_page.route("/Source")
 def source():
     learnmore = learnmore_list_remove('Source')
@@ -140,7 +154,7 @@ def source():
     bread = bread_prefix() + [('Source', ' ')]
     return render_template("multi.html", kids=['rcs.source.nf',
                                                'rcs.ack.nf',
-                                               'rcs.ack.nf'],
+                                               'rcs.cite.nf'],
         title=t, bread=bread, learnmore=learnmore)
 
 
@@ -210,7 +224,7 @@ def render_class_group_data():
         if info['filenamebase'] in ['cl3mod8', 'cl7mod8', 'cl4mod16', 'cl8mod16']:
             filepath = "%s/%s/%s.%d.gz" % (class_group_data_directory,info['filenamebase'],info['filenamebase'],k)
             if os.path.isfile(filepath) and os.access(filepath, os.R_OK):
-                return send_file(filepath, as_attachment=True, add_etags=False)
+                return send_file(filepath, as_attachment=True)
             else:
                 info['message'] = 'File not found'
                 return class_group_request_error(info, bread)
@@ -446,7 +460,7 @@ def render_field_webpage(args):
     if D.abs().is_prime() or D == 1:
         data['discriminant'] = raw_typeset_int(D)
     else:
-        data['discriminant'] = raw_typeset_int(D, extra= r"\(\medspace = %s\)" % data['disc_factor'])
+        data['discriminant'] = raw_typeset_int(D, extra=r"\(\medspace = %s\)" % data['disc_factor'])
     if nf.frobs():
         data['frob_data'], data['seeram'] = see_frobs(nf.frobs())
     else:  # fallback in case we haven't computed them in a case
@@ -499,12 +513,45 @@ def render_field_webpage(args):
         loc_alg += '</tbody></table>\n'
 
     ram_primes_raw = str(ram_primes).replace('L', '')[1:-1]
-    ram_primes = [rf'\({compress_int(z,cutoff=30)[0]}\)' for z in ram_primes]
+    ram_primes = [rf'\({compress_int(z,cutoff=30,sides=5)[0]}\)' for z in ram_primes]
     ram_primes = (', ').join(ram_primes)
     # Get rid of python L for big numbers
     #ram_primes = ram_primes.replace('L', '')
     if not ram_primes:
-        ram_primes = r'\textrm{None}'
+        ram_primes = r'None'
+    if nf.is_cm_field():
+        # Reflex fields table
+        table = ""
+        reflex_fields = db.nf_fields_reflex.search({"nf_label" : label})
+        reflex_fields_list = []
+        field_labels_dict = {}
+        for reflex_field in reflex_fields:
+            if len(reflex_field['rf_coeffs']) > 1:
+                reflex_fields_list.append(['', reflex_field['rf_coeffs'], reflex_field['multiplicity']])
+                field_labels_dict[tuple(reflex_field['rf_coeffs'])] = "N/A"
+        field_labels = db.nf_fields.search({"$or":[{"coeffs" : a[1]} for a in reflex_fields_list]}, ["label", "coeffs"])
+        for field in field_labels:
+            field_labels_dict[tuple(field["coeffs"])] = field["label"]
+        for reflex_field in reflex_fields_list:
+            reflex_field[0] = fake_label(field_labels_dict[tuple(reflex_field[1])], reflex_field[1])
+        total = 2 ** (nf.degree()//2 - 1)
+        reflex_fields_list.sort()
+        #print(reflex_fields_list)
+        for reflex_field in reflex_fields_list:
+            if table != "":
+                table = table + ', '
+            if field_labels_dict[tuple(reflex_field[1])] == "N/A":
+                table = table + formatfield(reflex_field[1], data={'label' : field_labels_dict[tuple(reflex_field[1])]})
+            else:
+                table = table + formatfield(reflex_field[1], data={'label' : field_labels_dict[tuple(reflex_field[1])]})
+            if reflex_field[2] > 1:
+                table = table + '$^{' + str(reflex_field[2]) + '}$'
+            total = total - reflex_field[2]
+        if total > 0:
+            if table != "":
+                table = table + ', '
+            table = table + 'unavailable$^{' + str(total) + '}$'
+        data['reflex_fields'] = table
     data['phrase'] = group_phrase(n, t)
     zkraw = nf.zk()
     zk = [compress_poly_Q(x, 'a') for x in zkraw]
@@ -527,7 +574,7 @@ def render_field_webpage(args):
         extra='&nbsp;(order ${}$)'.format(nf.root_of_1_order()))
 
     myunits = nf.units()
-    if 'not' not in myunits: 
+    if 'not' not in myunits:
         myunits = [unlatex(z) for z in myunits]
         Ra = PolynomialRing(QQ,'a')
         myunits = [Ra(z) for z in myunits]
@@ -561,12 +608,13 @@ def render_field_webpage(args):
     info['downloads_visible'] = True
     info['downloads'] = [('worksheet', '/')]
     info['friends'] = []
-    if nf.can_class_number():
-        # hide ones that take a long time to compute on the fly
-        # note that the first degree 4 number field missed the zero of the zeta function
-        if abs(D**n) < 50000000:
-            info['friends'].append(('L-function', "/L/NumberField/%s" % label))
-    info['friends'].append(('Galois group', "/GaloisGroup/%dT%d" % (n, t)))
+    if nf.degree() == 1:
+        info['friends'].append(('L-function', url_for('l_functions.by_full_label', label='1-1-1.1-r0-0-0')))
+    info['friends'].append(('Galois group', url_for("galois_groups.by_label", label="%dT%d" % (n, t))))
+    discrootfieldcoeffs = nf.discrootfieldcoeffs()[0]
+    rf_label = db.nf_fields.lucky({'coeffs': discrootfieldcoeffs}, 'label')
+    if rf_label:
+        info['friends'].append(('Discriminant root field', url_for("number_fields.by_label", label=rf_label)))
     if 'dirichlet_group' in info:
         info['friends'].append(('Dirichlet character group',
                                 url_for("characters.dirichlet_group_table",
@@ -628,6 +676,7 @@ def render_field_webpage(args):
         primes = 'prime'
     else:
         primes = 'primes'
+    ram_primes = ','.join([str(z).rstrip('L') for z in nf.ramified_primes()])
     if len(ram_primes) > 30:
         ram_primes = 'see page'
     else:
@@ -644,8 +693,8 @@ def render_field_webpage(args):
                   ('Galois group', group_pretty_and_nTj(data['degree'], t))]
     downloads = [('Stored data to gp',
                   url_for('.nf_download', nf=label, download_type='data'))]
-    for lang in [["Magma","magma"], ["SageMath","sage"], ["Pari/GP", "gp"]]:
-        downloads.append(('Download {} code'.format(lang[0]),
+    for lang in [("Magma", "magma"), ("Oscar", "oscar"), ("PariGP", "gp"), ("SageMath", "sage")]:
+        downloads.append(('Code to {}'.format(lang[0]),
                           url_for(".nf_download", nf=label, download_type=lang[1])))
     downloads.append(('Underlying data', url_for(".nf_datapage", label=label)))
     from lmfdb.artin_representations.math_classes import NumberFieldGaloisGroup
@@ -689,7 +738,7 @@ def format_coeffs(coeffs):
 
 
 def url_for_label(label):
-    return url_for(".by_label", label=label)
+    return url_for("number_fields.by_label", label=label)
 
 @nf_page.route("/<label>")
 def by_label(label):
@@ -725,74 +774,36 @@ def interesting():
         learnmore=learnmore_list(),
     )
 
-def download_search(info):
-    dltype = info.get('Submit')
-    delim = 'bracket'
-    com = r'\\'  # single line comment start
-    com1 = ''  # multiline comment start
-    com2 = ''  # multiline comment end
-    filename = 'fields.gp'
-    mydate = time.strftime("%d %B %Y")
-    if dltype == 'sage':
-        com = '#'
-        filename = 'fields.sage'
-    if dltype == 'mathematica':
-        com = ''
-        com1 = '(*'
-        com2 = '*)'
-        delim = 'brace'
-        filename = 'fields.ma'
-    if dltype == 'magma':
-        com = ''
-        com1 = '/*'
-        com2 = '*/'
-        delim = 'magma'
-        filename = 'fields.m'
-    s = com1 + "\n"
-    s += com + ' Number fields downloaded from the LMFDB downloaded %s\n'% mydate
-    s += com + ' Below is a list called data. Each entry has the form:\n'
-    s += com + '   [label, polynomial, discriminant, t-number, class group]\n'
-    s += com + ' Here the t-number is for the Galois group\n'
-    s += com + ' If a class group was not computed, the entry is [-1]\n'
-    s += '\n' + com2
-    s += '\n'
-    if dltype == 'magma':
-        s += 'data := ['
-    else:
-        s += 'data = ['
-    s += '\\\n'
-    Qx = PolynomialRing(QQ,'x')
-    # reissue saved query here
-    res = db.nf_fields.search(ast.literal_eval(info["query"]))
-    for f in res:
-        pol = Qx(f['coeffs'])
-        D = f['disc_abs'] * f['disc_sign']
-        gal_t = int(f['galois_label'].split('T')[1])
-        if 'class_group' in f:
-            cl = f['class_group']
-        else:
-            cl = [-1]
-        entry = ', '.join(['"'+str(f['label'])+'"', str(pol), str(D), str(gal_t), str(cl)])
-        s += '[' + entry + ']' + ',\\\n'
-    s = s[:-3]
-    if dltype == 'gp':
-        s += '];\n'
-    else:
-        s += ']\n'
-    if delim == 'brace':
-        s = s.replace('[', '{')
-        s = s.replace(']', '}')
-    if delim == 'magma':
-        s = s.replace('[', '[*')
-        s = s.replace(']', '*]')
-        s += ';'
-    strIO = BytesIO()
-    strIO.write(s.encode('utf-8'))
-    strIO.seek(0)
-    return send_file(strIO,
-                     attachment_filename=filename,
-                     as_attachment=True,
-                     add_etags=False)
+download_format = {
+    'gp' : { 'com1': '/*', 'com2' : '*/', 'assign': '=', 'llist' : '[', 'rlist': ']', 'ltup': '[', 'rtup': ']' , 'ext': 'gp', 'eol': '\\', 'noc': True },
+    'magma' : { 'com1': '/*', 'com2': '*/', 'assign': ':=', 'llist': '[', 'rlist': ']', 'ltup': '<', 'rtup': '>', 'ext': 'm', 'noc': True },
+    'mathematica' : { 'com1' : '(*', 'com2' : '*)', 'assign': '=', 'llist': '{', 'rlist': '}', 'ltup': '{', 'rtup': '}', 'ext': 'ma' },
+    'oscar' : { 'com1': '#=', 'com2': '=#', 'assign': '=', 'llist': '[', 'rlist': ']', 'ltup': '(', 'rtup': ')', 'ext': 'jl' },
+    'sage' : { 'com': '#', 'com1': '', 'com2': '', 'assign': '=', 'llist': '[', 'rlist': ']', 'ltup': '(', 'rtup': ')', 'ext': 'sage' },
+}
+
+download_preamble = {
+    'gp' : '',
+    'magma' : 'R<x> := PolynomialRing(Rationals());',
+    'mathematica' : '',
+    'oscar' : 'Rx, x = PolynomialRing(QQ)',
+    'sage' : 'x = polygen(QQ)',
+}
+
+download_makedata = {
+    'gp' : '', # don't try to make fields in gp, even with nfinit it may take a very long time
+    'magma' : 'function make_data() return [NumberField(r[2]) : r in data]; end function;',
+    'mathematica' : '',
+    'oscar' : 'function make_data() return [NumberField(r[2]) for r in data] end',
+    'sage' : 'def make_data(): return [NumberField(r[1],"a") for r in data]',
+}
+download_makedata_comment = {
+    'magma': 'To create a list L of fields, type "L := make_data();"',
+    'sage': 'To create a list L of {short_name}, type "L = make_data()"',
+    'gp': '',
+    'mathematica': '',
+    'oscar': 'To create a list L of {short_name}, type "L = make_data()"',
+}
 
 
 def number_field_jump(info):
@@ -821,34 +832,55 @@ def number_field_jump(info):
 
 nf_columns = SearchColumns([
     ProcessedCol("label", "nf.label", "Label",
-                 lambda label: '<a href="%s">%s</a>' % (url_for_label(label), nf_label_pretty(label)),
-                 default=True),
-    SearchCol("poly", "nf.defining_polynomial", "Polynomial", default=True),
-    MathCol("degree", "nf.degree", "Degree", align="center"),
-    MultiProcessedCol("signature", "nf.signature", "Signature", ["r2", "degree"], lambda r2, degree: '[%s,%s]' % (degree - 2*r2, r2 ), align="center"),
-    MathCol("disc", "nf.discriminant", "Discriminant", default=True, align="left"),
-    MathCol("num_ram", "nf.ramified_primes", "Ram. prime count", short_title="ramified prime count"),
-    MathCol("rd", "nf.root_discriminant", "Root discriminant"),
-    CheckCol("cm", "nf.cm_field", "Is CM field?"),
-    CheckCol("is_galois", "nf.galois_group", "Is Galois?"),
-    CheckCol("monogenic", "nf.monogenic", "Is monogenic?"),
-    SearchCol("galois", "nf.galois_group", "Galois group", default=True),
-    SearchCol("class_group_desc", "nf.ideal_class_group", "Class group", default=True),
-    MathCol("torsion_order", "nf.unit_group", "Unit group torsion", align="center"),
-    MultiProcessedCol("unit_rank", "nf.rank", "Unit group rank", ["r2", "degree"], lambda r2, degree: degree - r2 + - 1, align="center", mathmode=True),
-    MathCol("regulator", "nf.regulator", "Regulator", align="left")],
-    db_cols=["class_group", "coeffs", "degree", "r2", "disc_abs", "disc_sign", "galois_label", "label", "ramps", "used_grh", "cm", "is_galois", "torsion_order", "regulator", "rd"])
+                 lambda label: '<a href="%s">%s</a>' % (url_for_label(label), nf_label_pretty(label))),
+    PolynomialCol("coeffs", "nf.defining_polynomial", "Polynomial"),
+    MathCol("degree", "nf.degree", "Degree", align="center", default=False),
+    MultiProcessedCol("signature", "nf.signature", "Signature", ["r2", "degree"], lambda r2, degree: '[%s,%s]' % (degree - 2*r2, r2 ), apply_download=False, align="center", default=False),
+    DiscriminantCol("disc", "nf.disc", "Discriminant", ['disc_sign', 'disc_abs'], func=None, align="left"),
+    MathCol("num_ram", "nf.ramified_primes", "Ram. prime count", short_title="ramified prime count", default=False),
+    MathCol("rd", "nf.root_discriminant", "Root discriminant", default=False),
+    CheckCol("cm", "nf.cm_field", "CM field", default=False),
+    CheckCol("is_galois", "nf.galois_group", "Galois", default=False),
+    CheckMaybeCol("monogenic", "nf.monogenic", "Monogenic", default=False),
+    SearchCol("galois", "nf.galois_group", "Galois group", download_col="galois_label"),
+    ClassGroupCol("class_group_desc", "nf.ideal_class_group", "Class group", download_col="class_group"),
+    MathCol("torsion_order", "nf.unit_group", "Unit group torsion", align="center", default=False),
+    MultiProcessedCol("unit_rank", "nf.rank", "Unit group rank", ["r2", "degree"], lambda r2, degree: degree - r2 - 1, align="center", mathmode=True, default=False),
+    MathCol("regulator", "nf.regulator", "Regulator", align="left", default=False)],
+    db_cols=["class_group", "coeffs", "degree", "r2", "disc_abs", "disc_sign", "galois_label", "label", "ramps", "used_grh", "cm", "is_galois", "torsion_order", "regulator", "rd", "monogenic", "num_ram"])
 
 def nf_postprocess(res, info, query):
     galois_labels = [rec["galois_label"] for rec in res if rec.get("galois_label")]
     cache = knowl_cache(list(set(galois_labels)))
     for rec in res:
         wnf = WebNumberField.from_data(rec)
-        rec["poly"] = wnf.web_poly()
+        rec["poly"] = '$'+compress_polynomial(wnf.poly(),30)+'$'
         rec["disc"] = wnf.disc_factored_latex()
         rec["galois"] = wnf.galois_string(cache=cache)
         rec["class_group_desc"] = wnf.class_group_invariants()
     return res
+
+class NFDownloader(Downloader):
+    table = db.nf_fields
+    title = "Number fields"
+    inclusions = {
+        "poly": (
+            ["coeffs"],
+            {
+                "sage": 'poly = ZZx(out["coeffs"])',
+                "magma": 'poly := ZZx!(out`coeffs);',
+                "gp": 'poly = Polrev(mapget(out, "coeffs"));',
+            }
+        ),
+        "field": (
+            ["coeffs"],
+            {
+                "sage": 'field.<a> = NumberField(poly)',
+                "magma": 'field<a> := NumberField(poly);',
+                "gp": 'field = nfinit(poly);',
+            }
+        ),
+    }
 
 @search_wrap(table=db.nf_fields,
              title='Number field search results',
@@ -857,7 +889,7 @@ def nf_postprocess(res, info, query):
              per_page=50,
              shortcuts={'jump':number_field_jump,
                         #'algebra':number_field_algebra,
-                        'download':download_search},
+                        'download':NFDownloader()},
              url_for_label=url_for_label,
              postprocess=nf_postprocess,
              bread=lambda:[('Number fields', url_for(".number_field_render_webpage")),
@@ -880,11 +912,12 @@ def number_field_search(info, query):
     parse_primes(info,query,'ram_primes',name='Ramified primes',
                  qfield='ramps',mode=info.get('ram_quantifier'),radical='disc_rad',cardinality='num_ram')
     parse_subfield(info, query, 'subfield', qfield='subfields', name='Intermediate field')
-    parse_padicfields(info, query, 'completions', qfield='local_algs', name='$p$-adic completions')
+    parse_padicfields(info, query, 'completions', qfield='local_algs', name='$p$-adic completions', flag_unramified=True)
     parse_bool_unknown(info,query,'monogenic')
     parse_posints(info,query,'index')
     parse_primes(info,query,'inessentialp',name='Inessential primes',
                  qfield='inessentialp', mode=info.get('inessential_quantifier'))
+    parse_bool(info,query,'is_minimal_sibling')
     info['wnf'] = WebNumberField.from_data
     info['gg_display'] = group_pretty_and_nTj
 
@@ -978,24 +1011,31 @@ def unlatex(s):
     s = re.sub(r'\\frac{(.+?)}{(.+?)}', r'(\1)/(\2)', s)
     s = s.replace(r'{',r'(')
     s = s.replace(r'}',r')')
-    s = re.sub(r'([^\s+,-])\s*a', r'\1*a',s)
+    s = re.sub(r'([^\s+,*-])\s*a', r'\1*a',s)
     return s
 
 
 @nf_page.route('/<nf>/download/<download_type>')
 def nf_download(**args):
     typ = args['download_type']
-    if typ == 'data':
-        response = make_response(nf_data(**args))
-    else:
-        response = make_response(nf_code(**args))
+    try:
+        if typ == 'data':
+            response = make_response(nf_data(**args))
+        else:
+            response = make_response(nf_code(**args))
+    except Exception as err:
+        return abort(404, str(err))
     response.headers['Content-type'] = 'text/plain'
     return response
 
 
 def nf_data(**args):
     label = args['nf']
+    if not FIELD_LABEL_RE.fullmatch(label):
+        raise ValueError(f"Invalid label {label}")
     nf = WebNumberField(label)
+    if nf.is_null():
+        raise ValueError(f"There is no number field with label {label}")
     data = '/* Data is in the following format\n'
     data += '   Note, if the class group has not been computed, it, the class number, the fundamental units, regulator and whether grh was assumed are all 0.\n'
     data += '[polynomial,\ndegree,\nt-number of Galois group,\nsignature [r,s],\ndiscriminant,\nlist of ramifying primes,\nintegral basis as polynomials in a,\n1 if it is a cm field otherwise 0,\nclass number,\nclass group structure,\n1 if grh was assumed and 0 if not,\nfundamental units,\nregulator,\nlist of subfields each as a pair [polynomial, number of subfields isomorphic to one defined by this polynomial]\n]'
@@ -1031,11 +1071,11 @@ def nf_data(**args):
 
 
 sorted_code_names = ['field', 'poly', 'degree', 'signature',
-                     'discriminant', 'ramified_primes',
+                     'discriminant', 'ramified_primes', 'automorphisms',
                      'integral_basis', 'class_group', 'unit_group',
                      'unit_rank', 'unit_torsion_gen',
-                     'fundamental_units', 'regulator', 'galois_group',
-                     'prime_cycle_types']
+                     'fundamental_units', 'regulator', 'class_number_formula',
+                     'intermediate_fields', 'galois_group', 'prime_cycle_types']
 
 code_names = {'field': 'Define the number field',
               'poly': 'Defining polynomial',
@@ -1043,6 +1083,7 @@ code_names = {'field': 'Define the number field',
               'signature': 'Signature',
               'discriminant': 'Discriminant',
               'ramified_primes': 'Ramified primes',
+              'automorphisms': 'Autmorphisms',
               'integral_basis': 'Integral basis',
               'class_group': 'Class group',
               'unit_group': 'Unit group',
@@ -1050,20 +1091,30 @@ code_names = {'field': 'Define the number field',
               'unit_torsion_gen': 'Generator for roots of unity',
               'fundamental_units': 'Fundamental units',
               'regulator': 'Regulator',
+              'class_number_formula': 'Analytic class number formula',
               'galois_group': 'Galois group',
+              'intermediate_fields': 'Intermediate fields',
               'prime_cycle_types': 'Frobenius cycle types'}
 
-Fullname = {'magma': 'Magma', 'sage': 'SageMath', 'gp': 'Pari/GP'}
-Comment = {'magma': '//', 'sage': '#', 'gp': '\\\\', 'pari': '\\\\'}
+Fullname = {'magma': 'Magma', 'sage': 'SageMath', 'gp': 'Pari/GP', 'oscar': 'Oscar'}
+Comment = {'magma': '//', 'sage': '#', 'gp': '\\\\', 'pari': '\\\\', 'oscar': '#'}
 
 
 def nf_code(**args):
     label = args['nf']
+    if not FIELD_LABEL_RE.fullmatch(label):
+        raise ValueError(f"Invalid label {label}")
     lang = args['download_type']
     nf = WebNumberField(label)
+    if nf.is_null():
+        raise ValueError(f"There is no number field with label {label}")
     nf.make_code_snippets()
     code = "{} {} code for working with number field {}\n\n".format(Comment[lang],Fullname[lang],label)
-    code += "{} (Note that not all these functions may be available, and some may take a long time to execute.)\n".format(Comment[lang])
+    if lang == 'oscar':
+        code += '{} If you have not already loaded the Oscar package, you should type "using Oscar;" before running the code below.\n'.format(Comment[lang])
+        code += "{} Some of these functions may take a long time to compile (this depends on the state of your Julia REPL), and/or to execute (this depends on the field).\n".format(Comment[lang])
+    else:
+        code += "{} Some of these functions may take a long time to execute (this depends on the field).\n".format(Comment[lang])
     if lang == 'gp':
         lang = 'pari'
     for k in sorted_code_names:
@@ -1072,9 +1123,9 @@ def nf_code(**args):
             code += nf.code[k][lang] + ('\n' if '\n' not in nf.code[k][lang] else '')
     return code
 
+
 class NFSearchArray(SearchArray):
     noun = "field"
-    plural_noun = "fields"
     sorts = [("", "degree", ['degree', 'disc_abs', 'disc_sign', 'iso_number']),
              ("signature", "signature", ['degree', 'r2', 'disc_abs', 'disc_sign', 'iso_number']),
              ("rd", "root discriminant", ['rd', 'degree', 'disc_abs', 'disc_sign', 'iso_number']),
@@ -1087,6 +1138,7 @@ class NFSearchArray(SearchArray):
     jump_egspan = r"e.g. 2.2.5.1, Qsqrt5, x^2-5, or x^2-x-1 for \(\Q(\sqrt{5})\)"
     jump_knowl = "nf.search_input"
     jump_prompt = "Label, name, or polynomial"
+
     def __init__(self):
         degree = TextBox(
             name="degree",
@@ -1114,15 +1166,19 @@ class NFSearchArray(SearchArray):
             name="cm_field",
             label="CM field",
             knowl="nf.cm_field")
+        is_minimal_sibling = YesNoBox(
+            name="is_minimal_sibling",
+            label="Minimal sibling",
+            knowl="nf.minimal_sibling")
         gal = TextBox(
             name="galois_group",
             label="Galois group",
             knowl="nf.galois_search",
             example="C5",
-            example_span="[8,3], C5 or 7T2")
+            example_span="[8,3], 8.3, C5 or 7T2")
         is_galois = YesNoBox(
             name="is_galois",
-            label="Is Galois",
+            label="Galois",
             knowl="nf.galois_group")
         regulator = TextBox(
             name="regulator",
@@ -1163,8 +1219,8 @@ class NFSearchArray(SearchArray):
             name="subfield",
             label="Intermediate field",
             knowl="nf.intermediate_fields",
-            example_span="2.2.5.1 or x^2-5 or a "+
-                display_knowl("nf.nickname", "field nickname"),
+            example_span="2.2.5.1 or x^2-5 or a "
+                + display_knowl("nf.nickname", "field nickname"),
             example="x^2-5")
         completion = TextBox(
             name="completions",
@@ -1188,7 +1244,7 @@ class NFSearchArray(SearchArray):
         inessentialprimes = TextBoxWithSelect(
             name="inessentialp",
             label="Inessential primes",
-            short_label= r'Ines. \(p\)',
+            short_label=r'Ines. \(p\)',
             knowl="nf.inessential_prime",
             select_box=inessential_quantifier,
             example="2,3")
@@ -1204,10 +1260,10 @@ class NFSearchArray(SearchArray):
             [regulator, subfield],
             [completion, monogenic],
             [index, inessentialprimes],
-            [count]]
+            [count, is_minimal_sibling]]
 
         self.refine_array = [
             [degree, signature, class_number, class_group, cm_field],
             [num_ram, ram_primes, ur_primes, gal, is_galois],
             [discriminant, rd, regulator, subfield, completion],
-            [monogenic, index, inessentialprimes]]
+            [is_minimal_sibling, monogenic, index, inessentialprimes]]

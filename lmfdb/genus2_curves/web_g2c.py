@@ -18,77 +18,87 @@ from lmfdb.groups.abstract.main import abstract_group_display_knowl
 from lmfdb.galois_groups.transitive_group import transitive_group_display_knowl
 from lmfdb.sato_tate_groups.main import st_display_knowl, st_anchor
 from lmfdb.genus2_curves import g2c_logger
-from sage.all import latex, ZZ, QQ, CC, lcm, gcd, PolynomialRing, implicit_plot, point, real, sqrt, var,  nth_prime
+from sage.all import latex, ZZ, QQ, CC, lcm, gcd, PolynomialRing, implicit_plot, point, real, sqrt, var, nth_prime
 from sage.plot.text import text
 from flask import url_for
+
 
 ###############################################################################
 # Pretty print functions
 ###############################################################################
 
-def decimal_pretty(s,min_chars_before_decimal=1,max_chars_after_decimal=6,max_chars=10):
+def decimal_pretty(s, min_chars_before_decimal=1, max_chars_after_decimal=6,
+                   max_chars=10):
     m = s.index(".") if "." in s else len(s)
     if m < min_chars_before_decimal:
         s = (min_chars_before_decimal-m)*' ' + s
-    n = min(min(max_chars,len(s)),min_chars_before_decimal+max_chars_after_decimal+1)
+    n = min(min(max_chars, len(s)), min_chars_before_decimal+max_chars_after_decimal+1)
     # truncate for the moment (as we do elsewhere in the LMFDB, revisit if we switch to rounding
     return s[:n]
+
 
 def bool_pretty(v):
     return 'yes' if v else 'no'
 
+
 def intlist_to_poly(s):
     return latex(PolynomialRing(QQ, 'x')(s))
+
 
 def strlist_to_nfelt(L, varname):
     return latex(PolynomialRing(QQ, varname)(L))
 
+
 def min_eqn_pretty(fh):
-    xR = PolynomialRing(QQ,'x')
-    polys = [ xR(tup) for tup in fh ]
-    yR = PolynomialRing(xR,'y')
+    xR = PolynomialRing(QQ, 'x')
+    polys = [xR(tup) for tup in fh]
+    yR = PolynomialRing(xR, 'y')
     lhs = yR([0, polys[1], 1])
-    return str(lhs).replace("*","") + " = " + str(polys[0]).replace("*","")
+    return str(lhs).replace("*", "") + " = " + str(polys[0]).replace("*", "")
+
 
 def simplify_hyperelliptic(fh):
-    xR = PolynomialRing(QQ,'x')
+    xR = PolynomialRing(QQ, 'x')
     f = 4*xR(fh[0]) + xR(fh[1])**2
     n = gcd(f.coefficients())
     f = (integer_squarefree_part(n) * f) / n
     return f.coefficients(sparse=False)
 
+
 def simplify_hyperelliptic_point(fh, pt):
-    xR = PolynomialRing(QQ,'x')
+    xR = PolynomialRing(QQ, 'x')
     f = 4*xR(fh[0]) + xR(fh[1])**2
     f1 = xR(fh[1])
     n = gcd(f.coefficients())
-    xzR = PolynomialRing(QQ,['x','z'])
+    xzR = PolynomialRing(QQ,['x', 'z'])
     z = xzR('z')
     f1 = (xzR(f1)*z**(4-len(fh[1]))).homogenize(z)
     return [pt[0], (2*pt[1] + f1([pt[0],pt[2]])) / n, pt[2]]
 
+
 def comp_poly(fh):
-    xR = PolynomialRing(QQ,'x')
+    xR = PolynomialRing(QQ, 'x')
     f = 4*xR(fh[0]) + xR(fh[1])**2
     f1 = xR(fh[1])
     n = gcd(f.coefficients())
-    xyzR = PolynomialRing(QQ,['x','y','z'])
+    xyzR = PolynomialRing(QQ,['x', 'y', 'z'])
     y = xyzR('y')
     z = xyzR('z')
     f1 = (xyzR(f1)*z**(4-len(fh[1]))).homogenize(z)
     return (2*y + f1) / n
 
+
 def min_eqns_pretty(fh):
-    xR = PolynomialRing(QQ,'x')
+    xR = PolynomialRing(QQ, 'x')
     polys = [ xR(tup) for tup in fh ]
-    yR = PolynomialRing(xR,'y')
+    yR = PolynomialRing(xR, 'y')
     lhs = yR([0, polys[1], 1])
     slist = [str(lhs).replace("*","") + " = " + str(polys[0]).replace("*","")]
-    xzR = PolynomialRing(QQ,['x','z'])
+    xzR = PolynomialRing(QQ,['x', 'z'])
     z = xzR('z')
     polys = [x.homogenize(z) for x in [xzR(polys[0])*z**(7-len(fh[0])),
                                        xzR(polys[1])*z**(4-len(fh[1]))]]
-    yR = PolynomialRing(xzR,'y')
+    yR = PolynomialRing(xzR, 'y')
     lhs = yR([0, polys[1], 1])
     slist.append(str(lhs).replace("*","") + " = " + str(polys[0]).replace("*",""))
     slist.append("y^2 = " + str(xR(simplify_hyperelliptic(fh))).replace("*",""))
@@ -97,19 +107,18 @@ def min_eqns_pretty(fh):
 
 def url_for_ec(label):
     if '-' not in label:
-        return url_for('ec.by_ec_label', label = label)
-    else:
-        (nf, cond, isog, num) = split_ecnf_label(label)
-        url = url_for('ecnf.show_ecnf', nf = nf, conductor_label = cond, class_label = isog, number = num)
-        return url
+        return url_for('ec.by_ec_label', label=label)
+    nf, cond, isog, num = split_ecnf_label(label)
+    return url_for('ecnf.show_ecnf', nf=nf, conductor_label=cond, class_label=isog, number=num)
+
 
 def url_for_ec_class(ec_label):
     if '-' not in ec_label:
-        (cond, iso, num) = split_lmfdb_label(ec_label)
+        cond, iso, num = split_lmfdb_label(ec_label)
         return url_for('ec.by_double_iso_label', conductor=cond, iso_label=iso)
-    else:
-        (nf, cond, isog, num) = split_ecnf_label(ec_label)
-        return url_for('ecnf.show_ecnf_isoclass', nf=nf, conductor_label=cond, class_label=isog)
+    nf, cond, isog, num = split_ecnf_label(ec_label)
+    return url_for('ecnf.show_ecnf_isoclass', nf=nf, conductor_label=cond, class_label=isog)
+
 
 def ec_label_class(ec_label):
     x = ec_label
@@ -117,13 +126,17 @@ def ec_label_class(ec_label):
         x = x[:-1]
     return x
 
+
 def g2c_lmfdb_label(cond, alpha, disc, num):
     return "%s.%s.%s.%s" % (cond, alpha, disc, num)
 
+
 g2c_lmfdb_label_regex = re.compile(r'(\d+)\.([a-z]+)\.(\d+)\.(\d+)')
+
 
 def split_g2c_lmfdb_label(lab):
     return g2c_lmfdb_label_regex.match(lab).groups()
+
 
 def factorsRR_raw_to_pretty(factorsRR):
     if factorsRR == ['RR']:
@@ -145,6 +158,7 @@ def factorsRR_raw_to_pretty(factorsRR):
     elif factorsRR == ['M_2(CC)']:
         return r'\mathrm{M}_2 (\C)'
 
+
 def ring_pretty(L, f):
     # Only usable for at most quadratic fields
     # TODO: Generalize, so that we can use it for cyclotomic maximal orders as
@@ -165,42 +179,44 @@ def ring_pretty(L, f):
 
 
 def QpName(p):
-    if p==0:
+    if p == 0:
         return r"$\R$"
-    return r"$\Q_{"+str(p)+"}$"
+    return r"$\Q_{" + str(p) + "}$"
+
 
 ###############################################################################
 # Plot functions
 ###############################################################################
 
-def inflate_interval(a,b,x=1.5):
+def inflate_interval(a, b, x=1.5):
     c = (a+b)/2
     d = (b-a)/2
     d *= x
-    return (c-d,c+d)
+    return (c-d, c+d)
 
-def eqn_list_to_curve_plot(L,rat_pts):
-    xpoly_rng = PolynomialRing(QQ,'x')
+
+def eqn_list_to_curve_plot(L, rat_pts):
+    xpoly_rng = PolynomialRing(QQ, 'x')
     poly_tup = [xpoly_rng(tup) for tup in L]
     f = poly_tup[0]
     h = poly_tup[1]
     g = f+h**2/4
-    if len(g.real_roots())==0 and g(0)<0:
+    if len(g.real_roots()) == 0 and g(0) < 0:
         return text(r"$X(\mathbb{R})=\emptyset$",(1,1),fontsize=50)
     X0 = [real(z[0]) for z in g.base_extend(CC).roots()]+[real(z[0]) for z in g.derivative().base_extend(CC).roots()]
     a,b = inflate_interval(min(X0),max(X0),1.5)
     groots = [a]+g.real_roots()+[b]
-    if b-a<1e-7:
-        a=-3
-        b=3
-        groots=[a,b]
+    if b-a < 1e-7:
+        a = -3
+        b = 3
+        groots = [a, b]
     ngints = len(groots)-1
     plotzones = []
     npts = 100
     for j in range(ngints):
         c = groots[j]
         d = groots[j+1]
-        if g((c+d)/2)<0:
+        if g((c+d)/2) < 0:
             continue
         (c,d) = inflate_interval(c,d,1.1)
         s = (d-c)/npts
@@ -208,30 +224,31 @@ def eqn_list_to_curve_plot(L,rat_pts):
         yvals = []
         for i in range(npts+1):
             v = g(u)
-            if v>0:
+            if v > 0:
                 v = sqrt(v)
                 w = -h(u)/2
                 yvals.append(w+v)
                 yvals.append(w-v)
             u += s
-        (m,M) = inflate_interval(min(yvals),max(yvals),1.2)
-        plotzones.append((c,d,m,M))
+        (m, M) = inflate_interval(min(yvals), max(yvals), 1.2)
+        plotzones.append((c, d, m, M))
     x = var('x')
     y = var('y')
-    plot=sum(implicit_plot(y**2 + y*h(x) - f(x), (x,R[0],R[1]),(y,R[2],R[3]), aspect_ratio='automatic', plot_points=500, zorder=1) for R in plotzones)
-    xmin=min([R[0] for R in plotzones])
-    xmax=max([R[1] for R in plotzones])
-    ymin=min([R[2] for R in plotzones])
-    ymax=max([R[3] for R in plotzones])
+    plot = sum(implicit_plot(y**2 + y*h(x) - f(x), (x,R[0],R[1]),(y,R[2],R[3]), aspect_ratio='automatic', plot_points=500, zorder=1) for R in plotzones)
+    xmin = min([R[0] for R in plotzones])
+    xmax = max([R[1] for R in plotzones])
+    ymin = min([R[2] for R in plotzones])
+    ymax = max([R[3] for R in plotzones])
     for P in rat_pts:
-        (x,y,z)=P
-        z=ZZ(z)
-        if z: # Do not attempt to plot points at infinity
-            x=ZZ(x)/z
-            y=ZZ(y)/z**3
+        (x,y,z) = P
+        z = ZZ(z)
+        if z:  # Do not attempt to plot points at infinity
+            x = ZZ(x)/z
+            y = ZZ(y)/z**3
             if x >= xmin and x <= xmax and y >= ymin and y <= ymax:
-                plot += point((x,y),color='red',size=40,zorder=2)
+                plot += point((x, y), color='red', size=40, zorder=2)
     return plot
+
 
 ###############################################################################
 # Name conversions for the Sato-Tate and real endomorphism algebras
@@ -247,10 +264,8 @@ def real_geom_end_alg_name(name):
         "M_2(R)":r"\mathrm{M}_2(\R)",
         "M_2(C)":r"\mathrm{M}_2(\C)"
         }
-    if name in name_dict.keys():
-        return name_dict[name]
-    else:
-        return name
+    return name_dict.get(name, name)
+
 
 def geom_end_alg_name(name):
     name_dict = {
@@ -264,37 +279,35 @@ def geom_end_alg_name(name):
         "M_2(Q)":r"\mathrm{M}_2(\Q)",
         "M_2(CM)":r"\mathrm{M}_2(\mathsf{CM})"
         }
-    if name in name_dict.keys():
-        return name_dict[name]
-    else:
-        return name
+    return name_dict.get(name, name)
+
 
 def end_alg_name(name):
     name_dict = {
-        "Q":r"\Q",
-        "RM":r"\mathsf{RM}",
-        "Q x Q":r"\Q \times \Q",
-        "CM":r"\mathsf{CM}",
-        "M_2(Q)":r"\mathrm{M}_2(\Q)",
+        "Q": r"\Q",
+        "RM": r"\mathsf{RM}",
+        "Q x Q": r"\Q \times \Q",
+        "CM": r"\mathsf{CM}",
+        "M_2(Q)": r"\mathrm{M}_2(\Q)",
         }
-    if name in name_dict.keys():
+    if name in name_dict:
         return name_dict[name]
-    else:
-        return name
+    return name
+
 
 def st0_group_name(name):
     st0_dict = {
-        'M_2(C)':r'\mathrm{U}(1)',
-        'M_2(R)':r'\mathrm{SU}(2)',
-        'C x C':r'\mathrm{U}(1)\times\mathrm{U}(1)',
-        'C x R':r'\mathrm{U}(1)\times\mathrm{SU}(2)',
-        'R x R':r'\mathrm{SU}(2)\times\mathrm{SU}(2)',
-        'R':r'\mathrm{USp}(4)'
+        'M_2(C)': r'\mathrm{U}(1)',
+        'M_2(R)': r'\mathrm{SU}(2)',
+        'C x C': r'\mathrm{U}(1)\times\mathrm{U}(1)',
+        'C x R': r'\mathrm{U}(1)\times\mathrm{SU}(2)',
+        'R x R': r'\mathrm{SU}(2)\times\mathrm{SU}(2)',
+        'R': r'\mathrm{USp}(4)'
         }
-    if name in st0_dict.keys():
+    if name in st0_dict:
         return st0_dict[name]
-    else:
-        return name
+    return name
+
 
 def plot_from_label(label):
     curve = db.g2c_curves.lookup(label)
@@ -302,6 +315,7 @@ def plot_from_label(label):
     min_eqn = literal_eval(curve['eqn'])
     plot = encode_plot(eqn_list_to_curve_plot(min_eqn, ratpts['rat_pts']))
     return plot
+
 
 ###############################################################################
 # Statement functions for displaying formatted endomorphism data
@@ -311,6 +325,7 @@ def gl2_statement_base(factorsRR, base):
     if factorsRR in [ ['RR', 'RR'], ['CC'] ]:
         return r"Of \(\GL_2\)-type over " + base
     return r"Not of \(\GL_2\)-type over " + base
+
 
 def gl2_simple_statement(factorsQQ, factorsRR):
     if factorsRR in [ ['RR', 'RR'], ['CC'] ]:
@@ -322,6 +337,7 @@ def gl2_simple_statement(factorsQQ, factorsRR):
     else:
         simple = "not simple"
     return gl2 + ", " + simple
+
 
 def end_statement(factorsQQ, factorsRR, field='', ring=None):
     # field is a latex string describing the basechange field (default is empty)
@@ -359,7 +375,7 @@ def end_statement(factorsQQ, factorsRR, field='', ring=None):
             # If there are two factors, then they are both at most quadratic
             # and we can prettify them
             else:
-                statement += r'\(' + r' \times '.join([ ring_pretty(factorQQ[1], 1) for factorQQ in factorsQQ ]) + r'\)'
+                statement += r'\(' + r' \times '.join(ring_pretty(factorQQ[1], 1) for factorQQ in factorsQQ) + r'\)'
         # Then the case where there is still a single factor:
         elif factorsQQ_number == 1:
             # Number field case:
@@ -377,7 +393,7 @@ def end_statement(factorsQQ, factorsRR, field='', ring=None):
         # Finally the case of two factors. We can prettify to some extent, since we
         # can describe the maximal order here
         else:
-            statement += r"an order of index \(%s\) in \(%s\)" % (ring[0], r' \times '.join([ ring_pretty(factorQQ[1], 1) for factorQQ in factorsQQ ]))
+            statement += r"an order of index \(%s\) in \(%s\)" % (ring[0], r' \times '.join(ring_pretty(factorQQ[1], 1) for factorQQ in factorsQQ))
         # End of first row:
         statement += "</td></tr>"
 
@@ -399,7 +415,7 @@ def end_statement(factorsQQ, factorsRR, field='', ring=None):
                 statement += " (CM)"
                 # TODO: Get the following line to work
                 #statement += " ({{ KNOWL('ag.complex_multiplication', title='CM') }})"
-        # Up next is the case of a matrix ring (trivial disciminant), with
+        # Up next is the case of a matrix ring (trivial discriminant), with
         # labels and full prettification always available:
         elif factorsQQ[0][2] == 1:
             statement += r"\(\mathrm{M}_2(\)<a href=%s>%s</a>\()\)" % (url_for("number_fields.by_label", label=factorsQQ[0][0]), factorsQQ_pretty[0])
@@ -423,6 +439,7 @@ def end_statement(factorsQQ, factorsRR, field='', ring=None):
     statement += "</table>"
     return statement
 
+
 def end_field_statement(field_label, poly):
     if field_label == '1.1.1.1':
         return r"All \(\overline{\Q}\)-endomorphisms of the Jacobian are defined over \(\Q\)."
@@ -434,6 +451,7 @@ def end_field_statement(field_label, poly):
     else:
         return r"""Smallest field over which all endomorphisms are defined:<br>
         Galois number field \(K = \Q (a)\) with defining polynomial \(%s\)""" % poly
+
 
 def end_lattice_statement(lattice):
     statement = ''
@@ -456,18 +474,20 @@ def end_lattice_statement(lattice):
         statement += "</p>\n"
     return statement
 
+
 def split_field_statement(is_simple_geom, field_label, poly):
     if is_simple_geom:
         return r"Simple over \(\overline{\Q}\)"
     elif field_label == '1.1.1.1':
         return r"Splits over \(\Q\)"
     elif field_label != '':
-        pretty =  field_pretty(field_label)
+        pretty = field_pretty(field_label)
         url = url_for("number_fields.by_label", label=field_label)
         return (r"Splits over the number field \(\Q (b) \simeq \) <a href=%s>%s</a> with defining polynomial:<br>&nbsp;&nbsp;\(%s\)"
             % (url, pretty, poly))
     else:
         return r"Splits over the number field \(\Q (b)\) with defining polynomial:<br>&nbsp;&nbsp;\(%s\)" % poly
+
 
 def split_statement(coeffs, labels, condnorms):
     if len(coeffs) == 1:
@@ -482,9 +502,10 @@ def split_statement(coeffs, labels, condnorms):
         # Otherwise give defining equation:
         else:
             statement += r"<br>&nbsp;&nbsp;\(y^2 = x^3 - g_4 / 48 x - g_6 / 864\) with"
-            statement += r"<br>&nbsp;&nbsp;\(g_4 = %s\)<br>&nbsp;&nbsp;\(g_6 = %s\)" % tuple(map (lambda x: strlist_to_nfelt(x,'b'),coeffs[n]))
+            statement += r"<br>&nbsp;&nbsp;\(g_4 = %s\)<br>&nbsp;&nbsp;\(g_6 = %s\)" % tuple((strlist_to_nfelt(x, 'b') for x in coeffs[n]))
             statement += "<br>&nbsp;&nbsp; Conductor norm: %s" % condnorms[n]
     return statement
+
 
 # function for displaying GSp4 subgroup data
 def gsp4_subgroup_data(label):
@@ -492,10 +513,11 @@ def gsp4_subgroup_data(label):
         data = db.gps_gsp4zhat.lookup(label)
     except ValueError:
         return "Invalid label for subgroup of GSp(4,Zhat): %s" % label
-    row_wrap = lambda cap, val: "<tr><td>%s: </td><td>%s</td></tr>\n" % (cap, val)
-    matrix = lambda m: r'$\begin{bmatrix}%s&%s&%s&%s\\%s&%s&%s&%s\\%s&%s&%s&%s\\%s&%s&%s&%s\end{bmatrix}$' % (m[0],m[1],m[2],m[3],m[4],m[5],m[6],m[7],m[8],m[9],m[10],m[11],m[12],m[13],m[14],m[15])
+
+    def row_wrap(cap, val): return "<tr><td>%s: </td><td>%s</td></tr>\n" % (cap, val)
+    def matrix(m): return r'$\begin{bmatrix}%s&%s&%s&%s\\%s&%s&%s&%s\\%s&%s&%s&%s\\%s&%s&%s&%s\end{bmatrix}$' % (m[0],m[1],m[2],m[3],m[4],m[5],m[6],m[7],m[8],m[9],m[10],m[11],m[12],m[13],m[14],m[15])
     info = '<table>\n'
-    info += row_wrap('Subgroup <b>%s</b>' % (label),  "<small>" + ', '.join([matrix(m) for m in data['generators']]) + "</small>")
+    info += row_wrap('Subgroup <b>%s</b>' % (label), "<small>" + ', '.join(matrix(m) for m in data['generators']) + "</small>")
     info += "<tr><td></td><td></td></tr>\n"
     info += row_wrap('Level', data['level'])
     info += row_wrap('Index', data['index'])
@@ -511,6 +533,7 @@ def gsp4_subgroup_data(label):
         info += row_wrap("Full %s-torsion field degree" % (ell), fulltorsflddeg)
     info += "</table>\n"
     return info
+
 
 # create friend entry from url (typically coming from lfunc_instances)
 def lfunction_friend_from_url(url):
@@ -537,6 +560,7 @@ def lfunction_friend_from_url(url):
         return ("Modular form " + label, "/" + url)
     return (url, "/" + url)
 
+
 # add new friend to list of friends, but only if really new (don't add an elliptic curve and its isogeny class)
 def add_friend(friends, friend):
     for oldfriend in friends:
@@ -549,26 +573,43 @@ def add_friend(friends, friend):
             return
     friends.append(friend)
 
+
 def th_wrap(kwl, title, colspan=1):
-    if colspan > 1:
-        return ' <th colspan=%s>%s</th>' % (colspan, display_knowl(kwl, title=title))
+    if kwl:
+        if colspan > 1:
+            return ' <th colspan=%s>%s</th>' % (colspan, display_knowl(kwl, title=title))
+        else:
+            return ' <th>%s</th>' % display_knowl(kwl, title=title)
     else:
-        return ' <th>%s</th>' % display_knowl(kwl, title=title)
+        if colspan > 1:
+            return ' <th colspan=%s>%s</th>' % (colspan, title)
+        else:
+            return ' <th>%s</th>' % title
+
+
 def td_wrapl(val):
     return r' <td align="left">\(%s\)</td>' % val
+
+
 def td_wrapr(val):
     return r' <td align="right">\(%s\)</td>' % val
+
+
 def td_wrapc(val):
     return r' <td align="center">\(%s\)</td>' % val
+
+
 def td_wrapcn(val):
     return r' <td align="center">%s</td>' % val
+
 
 def point_string(P):
     return '(' + ' : '.join(map(str, P)) + ')'
 
-def mw_gens_table(invs,gens,hts,pts,comp=PolynomialRing(QQ,['x','y','z'])('y')):
+
+def mw_gens_table(invs,gens,hts,pts,comp=PolynomialRing(QQ,['x', 'y', 'z'])('y')):
     def divisor_data(P):
-        R = PolynomialRing(QQ, ['x','z'])
+        R = PolynomialRing(QQ, ['x', 'z'])
         x = R('x')
         z = R('z')
         xP, yP = P[0], P[1]
@@ -589,23 +630,25 @@ def mw_gens_table(invs,gens,hts,pts,comp=PolynomialRing(QQ,['x','y','z'])('y')):
               '</tr>', '</thead>', '<tbody>']
     for i in range(len(invs)):
         gentab.append('<tr>')
-        D,xD,yD,yden = divisor_data(gens[i])
+        D, xD, yD, yden = divisor_data(gens[i])
         D0 = [P for P in pts if P[2] and xD(P[0],P[2]) == 0 and yD(P[0],P[2]) == yden*P[1]]
         Dinf = [P for P in pts if P[2] == 0 and not (xD(P[0],P[2]) == 0 and yD(P[0],P[2]) == yden*P[1])]
-        div = (r'2 \cdot' + point_string(D0[0]) if len(D0)==1 and len(Dinf)!=1 else ' + '.join([point_string(P) for P in D0])) if D0 else 'D_0'
+        div = (r'2 \cdot' + point_string(D0[0]) if len(D0) == 1 and len(Dinf) != 1 else ' + '.join(point_string(P) for P in D0)) if D0 else 'D_0'
         div += ' - '
-        div += (r'2 \cdot' + point_string(Dinf[0]) if len(Dinf)==1 and len(D0)!=1 else ' - '.join([point_string(P) for P in Dinf])) if Dinf else r'D_\infty'
+        div += (r'2 \cdot' + point_string(Dinf[0]) if len(Dinf) == 1 and len(D0) != 1 else ' - '.join(point_string(P) for P in Dinf)) if Dinf else r'D_\infty'
         gentab.extend([td_wrapl(div), td_wrapr(D[0]),td_wrapc('='),td_wrapl("0,"),td_wrapr(D[1]),td_wrapc("="),td_wrapl(D[2]),
-                       td_wrapc(decimal_pretty(str(hts[i]))) if invs[i] == 0 else td_wrapc('0'), td_wrapc(r'\infty') if invs[i]==0 else td_wrapc(invs[i])])
+                       td_wrapc(decimal_pretty(str(hts[i]))) if invs[i] == 0 else td_wrapc('0'), td_wrapc(r'\infty') if invs[i] == 0 else td_wrapc(invs[i])])
         gentab.append('</tr>')
     gentab.extend(['</tbody>', '</table>'])
     return '\n'.join(gentab)
 
-def mw_gens_simple_table(invs,gens,hts,pts,fh):
-    spts = [simplify_hyperelliptic_point(fh,pt) for pt in pts]
-    return mw_gens_table(invs,gens,hts,spts,comp=comp_poly(fh))
 
-def local_table(N,D,tama,bad_lpolys,cluster_pics):
+def mw_gens_simple_table(invs, gens, hts, pts, fh):
+    spts = [simplify_hyperelliptic_point(fh, pt) for pt in pts]
+    return mw_gens_table(invs, gens, hts, spts, comp=comp_poly(fh))
+
+
+def local_table(N, D, tama, bad_lpolys, cluster_pics):
     loctab = ['<table class="ntdata">', '<thead>', '<tr>',
               th_wrap('ag.bad_prime', 'Prime'),
               th_wrap('ag.conductor', r'ord(\(N\))'),
@@ -620,7 +663,7 @@ def local_table(N,D,tama,bad_lpolys,cluster_pics):
         if cplist:
             cp = str(cplist[0][1]) if cplist[0][1] > 0 else '?'
         else:
-            cp = '1' if N%p != 0 else '?'
+            cp = '1' if N % p != 0 else '?'
         Lplist = [r for r in bad_lpolys if r[0] == p]
         if Lplist:
             Lp = Lplist[0][1]
@@ -637,22 +680,29 @@ def local_table(N,D,tama,bad_lpolys,cluster_pics):
     loctab.extend(['</tbody>', '</table>'])
     return '\n'.join(loctab)
 
-def galrep_table(galrep):  
+
+def galrep_table(galrep, torsion_order):
     galtab = ['<table class="ntdata">', '<thead>', '<tr>',
               th_wrap('', r'Prime \(\ell\)'),
-              th_wrap('g2c.galois_rep_image', r'mod-\(\ell\) image'),
+              th_wrap('g2c.galois_rep_modell_image', r'mod-\(\ell\) image'),
+              th_wrap('g2c.torsion_order', r'Is torsion prime?'),
               '</tr>', '</thead>', '<tbody>']
     for i in range(len(galrep)):
         p = galrep[i]['prime']
         modellimage_lbl = galrep[i]['modell_image']
+        is_torsion = 'yes' if torsion_order % p == 0 else 'no'
         galtab.append('  <tr>')
-        modellimg = display_knowl('gsp4.subgroup_data', title=modellimage_lbl, kwargs={'label':modellimage_lbl})
-        galtab.extend([td_wrapc(p),td_wrapcn(modellimg)])
+        if modellimage_lbl == 'not computed':
+            modellimg = 'not computed'
+        else:
+            modellimg = display_knowl('gsp4.subgroup_data', title=modellimage_lbl, kwargs={'label':modellimage_lbl})
+        galtab.extend([td_wrapc(p),td_wrapcn(modellimg),td_wrapcn(is_torsion)])
         galtab.append('  </tr>')
     galtab.extend(['</tbody>', '</table>'])
     return '\n'.join(galtab)
 
-def ratpts_table(pts,pts_v):
+
+def ratpts_table(pts, pts_v):
     def sorted_points(pts):
         return sorted(pts,key=lambda P:(max([abs(x) for x in P]),sum([abs(x) for x in P])))
     if len(pts) > 1:
@@ -671,7 +721,7 @@ def ratpts_table(pts,pts_v):
         return r'%s: \(%s\)' % (display_knowl(kid,caption),r',\, '.join(spts))
     ptstab = ['<table class="ntdata">', '<thead>', '<tr>', th_wrap(kid, caption, colspan=tabcols)]
     ptstab.extend(['</tr>', '</thead>', '<tbody>'])
-    for i in range(0,len(pts),6):
+    for i in range(0, len(pts), 6):
         ptstab.append('<tr>')
         ptstab.extend([td_wrapc(P) for P in spts[i:i+6]])
         if i+6 > len(pts):
@@ -680,16 +730,27 @@ def ratpts_table(pts,pts_v):
     ptstab.extend(['</tbody>', '</table>'])
     return '\n'.join(ptstab)
 
-def ratpts_simpletable(pts,pts_v,fh):
+
+def ratpts_simpletable(pts, pts_v, fh):
     spts = [simplify_hyperelliptic_point(fh, pt) for pt in pts]
-    return ratpts_table(spts,pts_v)
+    return ratpts_table(spts, pts_v)
+
+
+def augment_galrep_and_nonsurj(galrep, nonsurj):
+
+    output = galrep.copy()
+    if nonsurj:
+        for p in nonsurj:
+            if p > 3:
+                output.append({'prime': p, 'modell_image' : 'not computed'})
+    return output
 
 
 ###############################################################################
 # Genus 2 curve class definition
 ###############################################################################
 
-class WebG2C(object):
+class WebG2C():
     """
     Class for a genus 2 curve (or isogeny class) over Q.  Attributes include:
         data -- information about the curve and its Jacobian to be displayed (taken from db and polished)
@@ -700,8 +761,8 @@ class WebG2C(object):
         bread -- bread crumbs for home page (conductor, isogeny class id, discriminant, curve id)
         title -- title to display on home page
     """
-    def __init__(self, curve, endo, tama, ratpts, clus, galrep, is_curve=True):
-        self.make_object(curve, endo, tama, ratpts, clus, galrep, is_curve)
+    def __init__(self, curve, endo, tama, ratpts, clus, galrep, nonsurj, is_curve=True):
+        self.make_object(curve, endo, tama, ratpts, clus, galrep, nonsurj, is_curve)
 
     @staticmethod
     def by_label(label):
@@ -713,7 +774,7 @@ class WebG2C(object):
         try:
             slabel = label.split(".")
             if len(slabel) == 2:
-                curve = db.g2c_curves.lucky({"class" : label})
+                curve = db.g2c_curves.lucky({"class": label})
             elif len(slabel) == 4:
                 curve = db.g2c_curves.lookup(label)
             else:
@@ -733,7 +794,7 @@ class WebG2C(object):
         if len(tama) == 0:
             g2c_logger.error("Tamagawa number data for genus 2 curve %s not found in database." % label)
             raise KeyError("Tamagawa number data for genus 2 curve %s not found in database." % label)
-        if len(slabel)==4:
+        if len(slabel) == 4:
             ratpts = db.g2c_ratpts.lookup(curve['label'])
             if not ratpts:
                 g2c_logger.warning("No rational points data for genus 2 curve %s found in database." % label)
@@ -750,10 +811,12 @@ class WebG2C(object):
                 except Exception:
                     g2c_logger.error("Cluster picture data for genus 2 curve %s not found in database." % label)
                     raise KeyError("Cluster picture data for genus 2 curve %s not found in database." % label)
+        nonsurj = curve.get('non_maximal_primes')
         galrep = list(db.g2c_galrep.search({'lmfdb_label': curve['label']},['prime', 'modell_image']))
-        return WebG2C(curve, endo, tama, ratpts, clus, galrep, is_curve=(len(slabel)==4))
+        galrep = augment_galrep_and_nonsurj(galrep, nonsurj)
+        return WebG2C(curve, endo, tama, ratpts, clus, galrep, nonsurj, is_curve=(len(slabel) == 4))
 
-    def make_object(self, curve, endo, tama, ratpts, clus, galrep, is_curve):
+    def make_object(self, curve, endo, tama, ratpts, clus, galrep, nonsurj, is_curve):
         from lmfdb.genus2_curves.main import url_for_curve_label
 
         # all information about the curve, its Jacobian, isogeny class, and endomorphisms goes in the data dictionary
@@ -800,11 +863,11 @@ class WebG2C(object):
             P = curve['non_solvable_places']
             if len(P):
                 sz = "except over "
-                sz += ", ".join([QpName(p) for p in P])
+                sz += ", ".join(QpName(p) for p in P)
                 last = " and"
                 if len(P) > 2:
                     last = ", and"
-                sz = last.join(sz.rsplit(",",1))
+                sz = last.join(sz.rsplit(",", 1))
             else:
                 sz = "everywhere"
             data['non_solvable_places'] = sz
@@ -823,7 +886,7 @@ class WebG2C(object):
             data['leading_coeff'] = decimal_pretty(str(curve['leading_coeff'])) if curve['leading_coeff'] else 'unknown'
 
             data['rat_pts'] = ratpts['rat_pts']
-            data['rat_pts_v'] =  ratpts['rat_pts_v']
+            data['rat_pts_v'] = ratpts['rat_pts_v']
             data['rat_pts_table'] = ratpts_table(ratpts['rat_pts'],ratpts['rat_pts_v'])
             data['rat_pts_simple_table'] = ratpts_simpletable(ratpts['rat_pts'],ratpts['rat_pts_v'],data['min_eqn'])
 
@@ -834,7 +897,7 @@ class WebG2C(object):
             if len(invs) == 0:
                 data['mw_group'] = 'trivial'
             else:
-                data['mw_group'] = r'\(' + r' \times '.join([ (r'\Z' if n == 0 else r'\Z/{%s}\Z' % n) for n in invs]) + r'\)'
+                data['mw_group'] = r'\(' + r' \oplus '.join((r'\Z' if n == 0 else r'\Z/{%s}\Z' % n) for n in invs) + r'\)'
             if lower >= upper:
                 data['mw_gens_table'] = mw_gens_table (ratpts['mw_invs'], ratpts['mw_gens'], ratpts['mw_heights'], ratpts['rat_pts'])
                 data['mw_gens_simple_table'] = mw_gens_simple_table (ratpts['mw_invs'], ratpts['mw_gens'], ratpts['mw_heights'], ratpts['rat_pts'], data['min_eqn'])
@@ -845,9 +908,9 @@ class WebG2C(object):
                 t = curve['two_torsion_field']
                 data['two_torsion_field_knowl'] = r"splitting field of \(%s\) with Galois group %s" % (intlist_to_poly(t[1]),transitive_group_display_knowl(f"{t[2][0]}T{t[2][1]}"))
 
-            tamalist = [[item['p'],item['tamagawa_number']] for item in tama]
-            data['local_table'] = local_table (data['cond'],data['abs_disc'],tamalist,data['bad_lfactors_pretty'],clus)
-            data['galrep_table'] = galrep_table (galrep)
+            tamalist = [[item['p'], item['tamagawa_number']] for item in tama]
+            data['local_table'] = local_table(data['cond'], data['abs_disc'], tamalist, data['bad_lfactors_pretty'], clus)
+            data['galrep_table'] = galrep_table(galrep, data['torsion_order'])
 
             lmfdb_label = data['label']
             cond, alpha, disc, num = split_g2c_lmfdb_label(lmfdb_label)
@@ -860,13 +923,13 @@ class WebG2C(object):
             #TODO (?) also for the isogeny class
         else:
             # invariants specific to isogeny class
-            curves_data = list(db.g2c_curves.search({"class" : curve['class']}, ['label','eqn']))
+            curves_data = list(db.g2c_curves.search({"class": curve['class']}, ['label', 'eqn']))
             if not curves_data:
-                raise KeyError("No curves found in database for isogeny class %s of genus 2 curve %s." %(curve['class'],curve['label']))
-            data['curves'] = [ {"label" : c['label'], "equation_formatted" : min_eqn_pretty(literal_eval(c['eqn'])), "url": url_for_curve_label(c['label'])} for c in curves_data ]
+                raise KeyError("No curves found in database for isogeny class %s of genus 2 curve %s." % (curve['class'],curve['label']))
+            data['curves'] = [ {"label": c['label'], "equation_formatted": min_eqn_pretty(literal_eval(c['eqn'])), "url": url_for_curve_label(c['label'])} for c in curves_data ]
             lfunc_data = db.lfunc_lfunctions.lucky({'Lhash':str(curve['Lhash'])})
             if not lfunc_data:
-                raise KeyError("No Lfunction found in database for isogeny class of genus 2 curve %s." %curve['label'])
+                raise KeyError("No Lfunction found in database for isogeny class of genus 2 curve %s." % curve['label'])
             if lfunc_data and lfunc_data.get('euler_factors'):
                 data['good_lfactors'] = [[nth_prime(n+1),lfunc_data['euler_factors'][n]] for n in range(len(lfunc_data['euler_factors'])) if nth_prime(n+1) < 30 and (data['cond'] % nth_prime(n+1))]
                 data['good_lfactors_pretty'] = [ (c[0], list_to_factored_poly_otherorder(c[1])) for c in data['good_lfactors']]
@@ -875,8 +938,8 @@ class WebG2C(object):
         data['gl2_statement_base'] = gl2_statement_base(endo['factorsRR_base'], r'\(\Q\)')
         data['factorsQQ_base'] = endo['factorsQQ_base']
         data['factorsRR_base'] = endo['factorsRR_base']
-        data['end_statement_base'] = (r"Endomorphism %s over \(\Q\):<br>" %("ring" if is_curve else "algebra") +
-            end_statement(data['factorsQQ_base'], endo['factorsRR_base'], ring=data['end_ring_base'] if is_curve else None))
+        data['end_statement_base'] = (r"Endomorphism %s over \(\Q\):<br>" % ("ring" if is_curve else "algebra")
+            + end_statement(data['factorsQQ_base'], endo['factorsRR_base'], ring=data['end_ring_base'] if is_curve else None))
 
         # Field over which all endomorphisms are defined
         data['end_field_label'] = endo['fod_label']
@@ -888,8 +951,8 @@ class WebG2C(object):
         data['factorsRR_geom'] = endo['factorsRR_geom']
         if data['end_field_label'] != '1.1.1.1':
             data['gl2_statement_geom'] = gl2_statement_base(data['factorsRR_geom'], r'\(\overline{\Q}\)')
-            data['end_statement_geom'] = (r"Endomorphism %s over \(\overline{\Q}\):" %("ring" if is_curve else "algebra") +
-                end_statement(data['factorsQQ_geom'], data['factorsRR_geom'], field=r'\overline{\Q}', ring=data['end_ring_geom'] if is_curve else None))
+            data['end_statement_geom'] = (r"Endomorphism %s over \(\overline{\Q}\):" % ("ring" if is_curve else "algebra")
+                + end_statement(data['factorsQQ_geom'], data['factorsRR_geom'], field=r'\overline{\Q}', ring=data['end_ring_geom'] if is_curve else None))
         data['real_geom_end_alg_name'] = real_geom_end_alg_name(curve['real_geom_end_alg'])
         data['geom_end_alg_name'] = geom_end_alg_name(curve['geom_end_alg'])
         data['end_alg_name'] = end_alg_name(curve['end_alg'])
@@ -913,6 +976,13 @@ class WebG2C(object):
                 data['split_labels'] = endo['spl_facs_labels']
             data['split_condnorms'] = endo['spl_facs_condnorms']
             data['split_statement'] = split_statement(data['split_coeffs'], data.get('split_labels'), data['split_condnorms'])
+
+        # Nonsurjective primes data
+        if nonsurj is None:
+            data['exists_nonsurj_data'] = False
+        else:
+            data['exists_nonsurj_data'] = True
+            data['nonmax_primes'] = nonsurj
 
         # Properties
         self.properties = properties = [('Label', data['label'])]
@@ -975,7 +1045,7 @@ class WebG2C(object):
 
         # then again EC from lfun
         instances = []
-        for elt in db.lfunc_instances.search({'Lhash':data['Lhash'], 'type' : 'ECQP'}, 'url'):
+        for elt in db.lfunc_instances.search({'Lhash':data['Lhash'], 'type': 'ECQP'}, 'url'):
             instances.extend(elt.split('|'))
 
         # and then the other isogeny friends
@@ -1021,19 +1091,19 @@ class WebG2C(object):
         if not is_curve:
             return
         self.code = code = {}
-        code['show'] = {'sage':'','magma':''} # use default show names
+        code['show'] = {'sage':'', 'magma':''} # use default show names
         f,h = fh = data['min_eqn']
         g = simplify_hyperelliptic(fh)
-        code['curve'] = {'sage':'R.<x> = PolynomialRing(QQ); C = HyperellipticCurve(R(%s), R(%s));'%(f,h),
-                         'magma':'R<x> := PolynomialRing(Rationals()); C := HyperellipticCurve(R!%s, R!%s);'%(f,h) }
-        code['simple_curve'] = {'sage':'X = HyperellipticCurve(R(%s))'%(g), 'magma':'X,pi:= SimplifiedModel(C);' }
+        code['curve'] = {'sage':'R.<x> = PolynomialRing(QQ); C = HyperellipticCurve(R(%s), R(%s));' % (f, h),
+                         'magma':'R<x> := PolynomialRing(Rationals()); C := HyperellipticCurve(R!%s, R!%s);' % (f, h) }
+        code['simple_curve'] = {'sage':'X = HyperellipticCurve(R(%s))' % (g), 'magma':'X,pi:= SimplifiedModel(C);' }
         if data['abs_disc'] % 4096 == 0:
             ind2 = [a[0] for a in data['bad_lfactors']].index(2)
             bad2 = data['bad_lfactors'][ind2][1]
             magma_cond_option = ': ExcFactors:=[*<2,Valuation('+str(data['cond'])+',2),R!'+str(bad2)+'>*]'
         else:
             magma_cond_option = ''
-        code['cond'] = {'magma': 'Conductor(LSeries(C%s)); Factorization($1);'% magma_cond_option}
+        code['cond'] = {'magma': 'Conductor(LSeries(C%s)); Factorization($1);' % magma_cond_option}
         code['disc'] = {'magma':'Discriminant(C); Factorization(Integers()!$1);'}
         code['geom_inv'] = {'sage':'C.igusa_clebsch_invariants(); [factor(a) for a in _]',
                             'magma':'IgusaClebschInvariants(C); IgusaInvariants(C); G2Invariants(C);'}
@@ -1041,13 +1111,17 @@ class WebG2C(object):
         code['autQbar'] = {'magma':'AutomorphismGroup(ChangeRing(C,AlgebraicClosure(Rationals()))); IdentifyGroup($1);'}
         code['num_rat_wpts'] = {'magma':'#Roots(HyperellipticPolynomials(SimplifiedModel(C)));'}
         if ratpts:
-            code['rat_pts'] = {'magma': '[' + ','.join(["C![%s,%s,%s]"%(p[0],p[1],p[2]) for p in ratpts['rat_pts']]) + ']; // minimal model'}
-            code['rat_pts_simp'] = {'magma': '[' + ','.join(["C![%s,%s,%s]"%(p[0],p[1],p[2]) for p in [simplify_hyperelliptic_point(data['min_eqn'], pt) for pt in ratpts['rat_pts']]]) + ']; // simplified model'}
+            code['rat_pts'] = {'magma': '[' + ','.join("C![%s,%s,%s]" % (p[0], p[1], p[2]) for p in ratpts['rat_pts']) + ']; // minimal model'}
+            code['rat_pts_simp'] = {'magma': '[' + ','.join(["C![%s,%s,%s]" % (p[0], p[1], p[2]) for p in [simplify_hyperelliptic_point(data['min_eqn'], pt) for pt in ratpts['rat_pts']]]) + ']; // simplified model'}
         code['mw_group'] = {'magma':'MordellWeilGroupGenus2(Jacobian(C));'}
         code['two_selmer'] = {'magma':'TwoSelmerGroup(Jacobian(C)); NumberOfGenerators($1);'}
         code['has_square_sha'] = {'magma':'HasSquareSha(Jacobian(C));'}
         code['locally_solvable'] = {'magma':'f,h:=HyperellipticPolynomials(C); g:=4*f+h^2; HasPointsEverywhereLocally(g,2) and (#Roots(ChangeRing(g,RealField())) gt 0 or LeadingCoefficient(g) gt 0);'}
         code['torsion_subgroup'] = {'magma':'TorsionSubgroup(Jacobian(SimplifiedModel(C))); AbelianInvariants($1);'}
+        code['decomp'] = {'magma':'HeuristicDecompositionFactors(C);'}
+        code['endos0'] = {'magma':'//Please install CHIMP (https://github.com/edgarcosta/CHIMP) if you want to run this code'}
+        code['endos1'] = {'magma':'HeuristicIsGL2(C); HeuristicEndomorphismDescription(C); HeuristicEndomorphismFieldOfDefinition(C);'}
+        code['endos2'] = {'magma':'HeuristicIsGL2(C : Geometric := true); HeuristicEndomorphismDescription(C : Geometric := true); HeuristicEndomorphismLatticeDescription(C);'}
 
         self._code = None
 
@@ -1056,10 +1130,10 @@ class WebG2C(object):
 
             # read in code.yaml from current directory:
             _curdir = os.path.dirname(os.path.abspath(__file__))
-            self._code =  yaml.load(open(os.path.join(_curdir, "code.yaml")), Loader=yaml.FullLoader)
+            self._code = yaml.load(open(os.path.join(_curdir, "code.yaml")), Loader=yaml.FullLoader)
 
             # Fill in placeholders for this specific curve:
-            for lang in ['magma']: #TODO: 'sage', 'pari', 
+            for lang in ['magma']: #TODO: 'sage', 'pari',
                 self._code['curve'][lang] = self._code['curve'][lang] % (self.data['min_eqn'])
 
         return self._code

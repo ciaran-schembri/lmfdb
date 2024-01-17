@@ -8,12 +8,12 @@ from lmfdb import db
 from lmfdb.app import app
 from lmfdb.utils import (
     to_dict, encode_plot, flash_error, display_knowl, search_wrap,
-    SearchArray, TextBox, SelectBox, CountBox, YesNoBox,
+    SearchArray, TextBox, SelectBox, CountBox, YesNoBox, Downloader,
     StatsDisplay, totaler, proportioners, prop_int_pretty,
     parse_ints, parse_rational, parse_bool, clean_input, redirect_no_cache)
 from lmfdb.utils.search_parsing import search_parser
 from lmfdb.utils.interesting import interesting_knowls
-from lmfdb.utils.search_columns import SearchColumns, LinkCol, MathCol, CheckCol, ProcessedCol
+from lmfdb.utils.search_columns import SearchColumns, LinkCol, MathCol, CheckCol, ProcessedCol, RationalCol
 from lmfdb.api import datapage
 from lmfdb.groups.abstract.main import abstract_group_namecache, abstract_group_display_knowl
 from lmfdb.sato_tate_groups import st_page
@@ -392,8 +392,8 @@ def st_knowl(label):
     except ValueError:
         return "Unable to locate data for Sato-Tate group with label %s" % label
     label = data['label'] # label might have been converted
-    row_wrap = lambda cap, val: "<tr><td>%s: </td><td>%s</td></tr>\n" % (cap, val)
-    math_mode = lambda s: '$%s$'%s
+    def row_wrap(cap, val): return "<tr><td>%s: </td><td>%s</td></tr>\n" % (cap, val)
+    def math_mode(s): return '$%s$'%s
     info = '<table>\n'
     info += row_wrap('Sato-Tate group <b>%s</b>'%label, math_mode(data['pretty']))
     info += "<tr><td></td><td></td></tr>\n"
@@ -598,41 +598,40 @@ def search_by_label(label):
     return redirect(url_for('.by_label', label=rlabel), 301)
 
 st_columns = SearchColumns([
-    LinkCol("label", "st_group.label", "Label", lambda label: url_for('.by_label', label=label), default=True),
-    MathCol("weight", "st_group.weight", "Wt", default=True, short_title="weight"),
-    MathCol("degree", "st_group.degree", "Deg", default=True, short_title="degree"),
-    MathCol("real_dimension", "st_group.real_dimension", r"$\mathrm{dim}_{\mathbb{R}}$", short_title="real dimension", default=True),
-    ProcessedCol("identity_component", "st_group.identity_component", r"$\mathrm{G}^0$", st0_pretty, short_title="identity component", mathmode=True, default=True, align="center"),
-    MathCol("pretty", "st_group.name", "Name", default=True),
-    MathCol("components", "st_group.component_group", r"$\mathrm{G}/\mathrm{G}^0$", short_title="components", default=True),
-    MathCol("trace_zero_density", "st_group.trace_zero_density", r"$\mathrm{Pr}[t\!=\!0]$", short_title="Pr[t=0]", default=True),
-    MathCol("second_trace_moment", "st_group.second_trace_moment", r"$\mathrm{E}[a_1^2]$", short_title="E[a_1^2]", default=True, align="right"),
-    MathCol("fourth_trace_moment", "st_group.fourth_trace_moment", r"$\mathrm{E}[a_1^4]$", short_title="E[a_1^4]", default=True, align="right"),
-    ProcessedCol("sixth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^6]$", lambda v: (r"$%s$"%v[0][7]) if v[0][0] == "a_1" and len(v[0]) > 7 else "", short_title="E[a_1^6]", align="right", orig="moments"),
-    ProcessedCol("eigth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^8]$", lambda v: (r"$%s$"%v[0][9]) if v[0][0] == "a_1" and len(v[0]) > 9 else "", short_title="E[a_1^8]", align="right", orig="moments"),
-    ProcessedCol("tenth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^{10}]$", lambda v: (r"$%s$"%v[0][11]) if v[0][0] == "a_1" and len(v[0]) > 11 else "", short_title="E[a_1^{10}]", align="right", orig="moments"),
-    ProcessedCol("twelfth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^{12}]$", lambda v: (r"$%s$"%v[0][11]) if v[0][0] == "a_1" and len(v[0]) > 13 else "", short_title="E[a_1^{12}]", align="right", orig="moments"),
-    MathCol("first_a2_moment", "st_group.first_a2_moment", r"$\mathrm{E}[a_2]$", short_title="E[a_2]", default=True),
-    ProcessedCol("second_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^2]$", lambda v: (r"$%s$"%v[1][3]) if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 3 else "", short_title="E[a_2^2]", align="right", orig="moments"),
-    ProcessedCol("third_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^3]$", lambda v: (r"$%s$"%v[1][4]) if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 4 else "", short_title="E[a_2^3]", align="right", orig="moments"),
-    ProcessedCol("fourth_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^4]$", lambda v: (r"$%s$"%v[1][5]) if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 5 else "", short_title="E[a_2^4]", align="right", orig="moments"),
-    ProcessedCol("fifth_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^5]$", lambda v: (r"$%s$"%v[1][6]) if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 6 else "", short_title="E[a_2^5]", align="right", orig="moments"),
-    ProcessedCol("sixth_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^6]$", lambda v: (r"$%s$"%v[1][7]) if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 7 else "", short_title="E[a_2^6]", align="right", orig="moments"),
-    ProcessedCol("second_a3_moment", "st_group.moments", r"$\mathrm{E}[a_3^2]$", lambda v: (r"$%s$"%v[2][3]) if len(v) > 2 and v[2][0] == "a_3" and len(v[2]) > 3 else "", short_title="E[a_3^2]", align="right", orig="moments"),
-    ProcessedCol("fourth_a3_moment", "st_group.moments", r"$\mathrm{E}[a_3^4]$", lambda v: (r"$%s$"%v[2][5]) if len(v) > 2 and v[2][0] == "a_3" and len(v[2]) > 5 else "", short_title="E[a_3^4]", align="right", orig="moments"),
-    ProcessedCol("sixth_a3_moment", "st_group.moments", r"$\mathrm{E}[a_3^6]$", lambda v: (r"$%s$"%v[2][7]) if len(v) > 2 and v[2][0] == "a_3" and len(v[2]) > 7 else "", short_title="E[a_3^6]", align="right", orig="moments"),
-    CheckCol("maximal", "st_group.supgroups", "Maximal"),
-    CheckCol("rational", "st_group.rational", "Rational"),
-    MathCol("character_diagonal", "st_group.moment_matrix", r"Diagonal", align="left"),
+    LinkCol("label", "st_group.label", "Label", lambda label: url_for('.by_label', label=label)),
+    MathCol("weight", "st_group.weight", "Wt", short_title="weight"),
+    MathCol("degree", "st_group.degree", "Deg", short_title="degree"),
+    MathCol("real_dimension", "st_group.real_dimension", r"$\mathrm{dim}_{\mathbb{R}}$", short_title="real dimension"),
+    ProcessedCol("identity_component", "st_group.identity_component", r"$\mathrm{G}^0$", st0_pretty, short_title="identity component", mathmode=True, align="center"),
+    MathCol("pretty", "st_group.name", "Name"),
+    MathCol("components", "st_group.component_group", r"$\mathrm{G}/\mathrm{G}^0$", short_title="components"),
+    RationalCol("trace_zero_density", "st_group.trace_zero_density", r"$\mathrm{Pr}[t\!=\!0]$", short_title="Pr[t=0]", mathmode=True, align="center"),
+    MathCol("second_trace_moment", "st_group.second_trace_moment", r"$\mathrm{E}[a_1^2]$", short_title="E[a_1^2]", align="right"),
+    MathCol("fourth_trace_moment", "st_group.fourth_trace_moment", r"$\mathrm{E}[a_1^4]$", short_title="E[a_1^4]", align="right"),
+    ProcessedCol("sixth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^6]$", lambda v: v[0][7] if v[0][0] == "a_1" and len(v[0]) > 7 else "", short_title="E[a_1^6]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("eigth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^8]$", lambda v: v[0][9] if v[0][0] == "a_1" and len(v[0]) > 9 else "", short_title="E[a_1^8]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("tenth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^{10}]$", lambda v: v[0][11] if v[0][0] == "a_1" and len(v[0]) > 11 else "", short_title="E[a_1^{10}]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("twelfth_trace_moment", "st_group.moments", r"$\mathrm{E}[a_1^{12}]$", lambda v: v[0][11] if v[0][0] == "a_1" and len(v[0]) > 13 else "", short_title="E[a_1^{12}]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    MathCol("first_a2_moment", "st_group.first_a2_moment", r"$\mathrm{E}[a_2]$", short_title="E[a_2]"),
+    ProcessedCol("second_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^2]$", lambda v: v[1][3] if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 3 else "", short_title="E[a_2^2]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("third_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^3]$", lambda v: v[1][4] if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 4 else "", short_title="E[a_2^3]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("fourth_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^4]$", lambda v: v[1][5] if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 5 else "", short_title="E[a_2^4]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("fifth_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^5]$", lambda v: v[1][6] if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 6 else "", short_title="E[a_2^5]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("sixth_a2_moment", "st_group.moments", r"$\mathrm{E}[a_2^6]$", lambda v: v[1][7] if len(v) > 1 and v[1][0] == "a_2" and len(v[1]) > 7 else "", short_title="E[a_2^6]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("second_a3_moment", "st_group.moments", r"$\mathrm{E}[a_3^2]$", lambda v: v[2][3] if len(v) > 2 and v[2][0] == "a_3" and len(v[2]) > 3 else "", short_title="E[a_3^2]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("fourth_a3_moment", "st_group.moments", r"$\mathrm{E}[a_3^4]$", lambda v: v[2][5] if len(v) > 2 and v[2][0] == "a_3" and len(v[2]) > 5 else "", short_title="E[a_3^4]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    ProcessedCol("sixth_a3_moment", "st_group.moments", r"$\mathrm{E}[a_3^6]$", lambda v: v[2][7] if len(v) > 2 and v[2][0] == "a_3" and len(v[2]) > 7 else "", short_title="E[a_3^6]", align="right", orig="moments", apply_download=True, mathmode=True, default=False),
+    CheckCol("maximal", "st_group.supgroups", "Maximal", default=False),
+    CheckCol("rational", "st_group.rational", "Rational", default=False),
+    MathCol("character_diagonal", "st_group.moment_matrix", r"Diagonal", align="left", default=False),
 
 ])
-st_columns.dummy_download = True
 
 @search_wrap(
     table=db.gps_st,
     title="Sato-Tate group search results",
     err_title="Sato-Tate group search input error",
-    shortcuts={"jump": lambda v: search_by_label(v['jump'])},
+    shortcuts={"jump": lambda v: search_by_label(v['jump']), "download": Downloader(db.gps_st)},
     columns=st_columns,
     bread=lambda: get_bread("Search results"),
     learnmore=learnmore_list,
@@ -655,7 +654,7 @@ def sato_tate_search(info, query):
 
 def parse_sort(info):
     sorts = info['search_array'].sorts
-    for name, display, S in sorts:
+    for name, _, S in sorts:
         if name == info.get('sort_order', ''):
             sop = info.get('sort_dir', '')
             if sop == 'op':
@@ -675,7 +674,7 @@ def mu_data(n):
     rec['label_components'] = [int(0),int(1),int(0),int(n)]
     rec['weight'] = 0
     rec['degree'] = 1
-    rec['rational'] = True if n <= 2 else False
+    rec['rational'] = bool(n <= 2)
     rec['name'] = 'mu(%d)'%n
     rec['pretty'] = r'\mu(%d)'%n
     rec['real_dimension'] = 0
@@ -712,7 +711,7 @@ def mu_data(n):
 def mu_portrait(n):
     """ returns an encoded scatter plot of the nth roots of unity in the complex plane """
     if n <= 120:
-        plot =  list_plot([(cos(2*pi*m/n),sin(2*pi*m/n)) for m in range(n)],pointsize=30+60/n,axes=False)
+        plot = list_plot([(cos(2*pi*m/n),sin(2*pi*m/n)) for m in range(n)],pointsize=30+60/n,axes=False)
     else:
         plot = circle((0,0),1,thickness=3)
     plot.xmin(-1)
@@ -732,7 +731,7 @@ def su2_mu_data(w, n):
     rec['label'] = "%d.2.3.c%d"%(w,n)
     rec['weight'] = w
     rec['degree'] = 2
-    rec['rational'] = True if n <= 2 else False
+    rec['rational'] = bool(n <= 2)
     rec['name'] = 'SU(2)[C%d]'%n if n > 1 else 'SU(2)'
     rec['pretty'] = r'\mathrm{SU}(2)[C_{%d}]'%n if n > 1 else r'\mathrm{SU}(2)'
     rec['real_dimension'] = 3
@@ -767,7 +766,7 @@ def su2_mu_portrait(n):
     if n == 1:
         return db.gps_st.lookup('1.2.A.1.1a').get('trace_histogram')
     if n <= 120:
-        plot =  sum([line2d([(-2*cos(2*pi*m/n),-2*sin(2*pi*m/n)),(2*cos(2*pi*m/n),2*sin(2*pi*m/n))],thickness=3) for m in range(n)])
+        plot = sum([line2d([(-2*cos(2*pi*m/n),-2*sin(2*pi*m/n)),(2*cos(2*pi*m/n),2*sin(2*pi*m/n))],thickness=3) for m in range(n)])
     else:
         plot = circle((0, 0), 2, fill=True)
     plot.xmin(-2)
@@ -787,7 +786,7 @@ def nu1_mu_data(w,n):
     rec['label'] = "%d.2.1.d%d"%(w,n)
     rec['weight'] = w
     rec['degree'] = 2
-    rec['rational'] = True if n <= 2 else False
+    rec['rational'] = bool(n <= 2)
     rec['name'] = 'U(1)[C%d]'%n if n > 1 else 'N(U(1))'
     rec['pretty'] = r'\mathrm{U}(1)[D_{%d}]'%n if n > 1 else r'N(\mathrm{U}(1))'
     rec['real_dimension'] = 1
@@ -821,7 +820,7 @@ def nu1_mu_portrait(n):
     if n == 1:
         return db.gps_st.lookup('1.2.B.2.1a').get('trace_histogram')
     if n <= 120:
-        plot =  sum([line2d([(-2*cos(2*pi*m/n),-2*sin(2*pi*m/n)),(2*cos(2*pi*m/n),2*sin(2*pi*m/n))],thickness=3) for m in range(n)]) + circle((0,0),0.1,rgbcolor=(0,0,0),fill=True)
+        plot = sum([line2d([(-2*cos(2*pi*m/n),-2*sin(2*pi*m/n)),(2*cos(2*pi*m/n),2*sin(2*pi*m/n))],thickness=3) for m in range(n)]) + circle((0,0),0.1,rgbcolor=(0,0,0),fill=True)
     else:
         plot = circle((0, 0), 2, fill=True)
     plot.xmin(-2)
@@ -877,7 +876,7 @@ def render_by_label(label):
         info['abelian']=boolean_name(G['abelian'])
         info['solvable']=boolean_name(G['solvable'])
     if data.get('gens'):
-        info['gens'] = comma_separated_list([string_matrix(m) for m in data['gens']]) if type(data['gens']) == list else data['gens']
+        info['gens'] = comma_separated_list([string_matrix(m) for m in data['gens']]) if isinstance(data['gens'], list) else data['gens']
         info['numgens'] = len(info['gens'])
     else:
         info['numgens'] = 0
@@ -1039,7 +1038,6 @@ def labels_page():
 
 class STSearchArray(SearchArray):
     noun = "group"
-    plural_noun = "groups"
     sorts = [("", "weight", ["weight", "degree", "st0_label", "components", "component_group_number", "label"]),
              ("degree", "degree", ["degree", "weight", "st0_label", "components", "component_group_number", "label"]),
              ("real_dimension", "real dimension", ["real_dimension", "weight", "degree", "st0_label", "components", "component_group_number", "label"]),
@@ -1061,6 +1059,7 @@ class STSearchArray(SearchArray):
         'supgroup_multiplicities': False,
         'component_group_number': False,
     }
+
     def __init__(self):
         weight = TextBox(
             name="weight",
@@ -1162,24 +1161,29 @@ class STStats(StatsDisplay):
 
     stat_list = [
         {"cols": ["component_group", "identity_component"],
+         "constraint": {"rational": True},
          "totaler": totaler(),
          "proportioner": proportioners.per_col_total},
         {"cols": ["identity_component"],
-         "constraint": {"maximal": True},
+         "constraint": {"maximal": True, "rational": True},
          "top_title": [("maximal subgroups", "st_group.supgroups"),
                        ("per", None),
                        ("identity component", "st_group.identity_component")],
         },
         {"cols": ["trace_zero_density", "identity_component"],
+         "constraint": {"rational": True},
          "totaler": totaler(),
          "proportioner": proportioners.per_col_total},
         {"cols": ["second_trace_moment", "identity_component"],
+         "constraint": {"rational": True},
          "totaler": totaler(),
          "proportioner": proportioners.per_col_total},
         {"cols": ["fourth_trace_moment", "identity_component"],
+         "constraint": {"rational": True},
          "totaler": totaler(),
          "proportioner": proportioners.per_col_total},
         {"cols": ["first_a2_moment", "identity_component"],
+         "constraint": {"rational": True},
          "totaler": totaler(),
          "proportioner": proportioners.per_col_total},
     ]

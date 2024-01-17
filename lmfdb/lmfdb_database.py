@@ -12,7 +12,6 @@ from lmfdb.backend.database import PostgresDatabase
 from lmfdb.backend.searchtable import PostgresSearchTable
 from lmfdb.backend.statstable import PostgresStatsTable
 
-
 def overrides(super_class):
     def overrider(method):
         super_method = getattr(super_class, method.__name__)
@@ -27,8 +26,10 @@ def overrides(super_class):
 class LMFDBStatsTable(PostgresStatsTable):
     saving = True
 
+
 class LMFDBSearchTable(PostgresSearchTable):
     _stats_table_class_ = LMFDBStatsTable
+
     def __init__(self, *args, **kwds):
         PostgresSearchTable.__init__(self, *args, **kwds)
         self._verifier = None  # set when importing lmfdb.verify
@@ -140,7 +141,7 @@ class LMFDBSearchTable(PostgresSearchTable):
         self._check_verifications_enabled()
         if ratio is not None and check is None:
             raise ValueError("You can only provide a ratio if you specify a check")
-        lmfdb_root = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", ".."))
+        lmfdb_root = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), ".."))
         if logdir is None:
             logdir = os.path.join(lmfdb_root, "logs", "verification")
         if not os.path.exists(logdir):
@@ -186,7 +187,6 @@ class LMFDBSearchTable(PostgresSearchTable):
                     print("Starting %s" % tabletype)
                 cmd = os.path.abspath(os.path.join(
                     os.path.dirname(os.path.realpath(__file__)),
-                    "..",
                     "verify",
                     "verify_tables.py",
                 ))
@@ -429,6 +429,7 @@ class LMFDBDatabase(PostgresDatabase):
         from . import website # loads all the modules
         assert website
         from lmfdb.utils.display_stats import StatsDisplay
+
         def find_subs(L):
             # Assume no multiple inheritance
             new_subs = sum([C.__subclasses__() for C in L], [])

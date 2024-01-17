@@ -138,7 +138,6 @@ class mf_gamma1(MfChecker):
         """
         # TIME about 2s
         # TODO: check that the number of char_orbits of level N and weight k is the same as the number of rows in mf_newspaces with this weight and level.  The following doesn't work since num_spaces counts spaces with positive dimension
-        # self.check_crosstable_count('char_dir_orbits', 'num_spaces', ['level', 'weight_parity'], ['modulus', 'parity']))
         return self._run_crosstable(SQL("COUNT(*)"), 'mf_newspaces', 'num_spaces', ['level', 'weight'], extra=SQL(" AND t2.dim > 0"))
 
     ### mf_gamma1_subspaces ###
@@ -150,7 +149,6 @@ class mf_gamma1(MfChecker):
         # TIME about 1s
         return self.check_crosstable_dotprod('mf_gamma1_subspaces', 'cusp_dim', 'label', ['sub_mult', 'sub_dim'])
 
-
     ### mf_gamma1_portraits ###
     @overall
     def check_portraits_count(self):
@@ -160,7 +158,7 @@ class mf_gamma1(MfChecker):
         return self.check_crosstable_count('mf_gamma1_portraits', 1, 'label', constraint={'dim':{'$gt':0}, 'level':{'$lte':4000}})
 
     ### slow ###
-    @slow(projection=['level', 'level_radical', 'level_primes', 'level_is_prime', 'level_is_prime_power',  'level_is_squarefree', 'level_is_square'])
+    @slow(projection=['level', 'level_radical', 'level_primes', 'level_is_prime', 'level_is_prime_power', 'level_is_squarefree', 'level_is_square'])
     def check_level(self, rec, verbose=False):
         """
         check level_* attributes

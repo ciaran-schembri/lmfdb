@@ -4,7 +4,7 @@ import os
 from socket import gethostname
 import time
 from urllib.parse import urlparse, urlunparse
-
+from datetime import datetime
 from flask import (
     Flask,
     abort,
@@ -31,7 +31,7 @@ LMFDB_VERSION = "LMFDB Release 1.2.1"
 ############################
 
 
-class ReverseProxied(object):
+class ReverseProxied():
     def __init__(self, app):
         self.app = app
 
@@ -39,7 +39,7 @@ class ReverseProxied(object):
         scheme = environ.get('HTTP_X_FORWARDED_PROTO')
         if scheme:
             environ['wsgi.url_scheme'] = scheme
-        
+
         return self.app(environ, start_response)
 
 app = Flask(__name__)
@@ -63,7 +63,6 @@ def set_beta_state():
 
 
 def is_beta():
-    from flask import g
     return g.BETA
 
 
@@ -111,6 +110,15 @@ app.jinja_env.add_extension('jinja2.ext.do')
 #  * meta_description, shortthanks, feedbackpage
 #  * DEBUG and BETA variables storing whether running in each mode
 
+# try:
+#     # In order to support running under gunicorn with gevent workers,
+#     # we try to patch psycopg2 to add an appropriate callback function
+#     from psycogreen.gevent import patch_psycopg
+#     patch_psycopg()
+# except Exception:
+#     app.logger.info("Exception in psycogreen; not running with gevent support")
+# else:
+#     app.logger.info("Gevent support enabled")
 
 @app.context_processor
 def ctx_proc_userdata():
@@ -139,13 +147,26 @@ def ctx_proc_userdata():
     # debug mode?
     vars['DEBUG'] = is_debug_mode()
     vars['BETA'] = is_beta()
+    #vars['ALPHA'] = True # hardwired for alpha branch
 
     def modify_url(**replace):
-        urlparts = urlparse(request.url)
+        url = request.url
+        if url.startswith("https, "):
+            # Cocalc weirdness that lets them serve pages on https from within a project
+            url = url[7:]
+        urlparts = urlparse(url)
+        if "query_add" in replace:
+            assert "query" not in replace
+            if urlparts.query:
+                replace["query"] = replace.pop("query_add") + "&" + urlparts.query
+            else:
+                replace["query"] = replace.pop("query_add")
         urlparts = urlparts._replace(**replace)
         return urlunparse(urlparts)
     vars['modify_url'] = modify_url
     vars['zip'] = zip
+    from lmfdb.utils import pluralize
+    vars['pluralize'] = pluralize
 
     return vars
 
@@ -161,7 +182,7 @@ def ctx_proc_userdata():
 @app.context_processor
 def inject_sidebar():
     from .homepage import get_sidebar
-    return dict(sidebar=get_sidebar())
+    return {"sidebar": get_sidebar()}
 
 ##############################
 # Bottom link to google code #
@@ -223,8 +244,7 @@ def link_to_current_source():
 
 @app.template_filter("fmtdatetime")
 def fmtdatetime(value, format='%Y-%m-%d %H:%M:%S'):
-    import datetime
-    if isinstance(value, datetime.datetime):
+    if isinstance(value, datetime):
         return value.strftime(format)
     else:
         return "-"
@@ -248,6 +268,10 @@ def urlencode(kwargs):
 #    Redirects and errors    #
 ##############################
 
+# @app.after_request
+# def print_done(T):
+#     app.logger.info(f"done with     = {request.url}")
+#     return T
 
 @app.before_request
 def netloc_redirect():
@@ -258,8 +282,9 @@ def netloc_redirect():
         Redirect non-whitelisted routes from www.lmfdb.org to beta.lmfdb.org
     """
     from urllib.parse import urlparse, urlunparse
-    
+
     urlparts = urlparse(request.url)
+    # app.logger.info(f"Requested url = {request.url}")
 
     if urlparts.netloc in ["lmfdb.org", "lmfdb.com", "www.lmfdb.com"]:
         replaced = urlparts._replace(netloc="www.lmfdb.org", scheme="https")
@@ -276,12 +301,45 @@ def netloc_redirect():
         return redirect(url, code=301)
     elif (
         urlparts.netloc == "www.lmfdb.org"
-        and
-        not white_listed(urlparts.path)
+
+        and not white_listed(urlparts.path)
         and valid_bread(urlparts.path)
     ):
         replaced = urlparts._replace(netloc="beta.lmfdb.org", scheme="https")
         return redirect(urlunparse(replaced), code=302)
+
+
+@cached_function
+def bad_bots_list():
+    return [
+        elt.lower()
+        for elt in [
+            "The Knowledge AI",
+            "Wolfram",
+            "petalbot",
+        ]
+    ]
+
+
+@cached_function
+def very_bad_bots_list():
+    return [
+        elt.lower()
+        for elt in [
+            "Amazonbot",
+        ]
+    ]
+
+
+@app.before_request
+def badbot():
+    ua = request.user_agent.string.lower()
+    for elt in very_bad_bots_list():
+        if elt in ua:
+            return render_template("404.html", title='Too many requests'), 429
+    for elt in bad_bots_list():
+        if elt in ua:
+            time.sleep(10)
 
 
 def timestamp():
@@ -416,8 +474,7 @@ def workshops():
 @app.route("/lucant")
 @app.route("/LuCaNT")
 def lucant():
-    bread = [("LuCaNT", '')]
-    return render_template("lucant.html", title="LMFDB, Computation, and Number Theory (LuCaNT)", contribs=contribs, bread=bread)
+    return redirect("https://lucant.org/")
 
 # google's CSE for www.lmfdb.org/* (and *only* those pages!)
 
@@ -619,7 +676,7 @@ def add_colors():
         if color is None:
             from .utils.config import Configuration
             color = Configuration().get_color()
-    return dict(color=all_color_schemes[color].dict())
+    return {"color": all_color_schemes[color].dict()}
 
 
 @app.route("/style.css")

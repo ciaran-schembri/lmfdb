@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import time
 import subprocess
-import os
 import sys
 
 from lmfdb.backend.base import PostgresBase
@@ -17,6 +16,7 @@ from lmfdb.utils.config import Configuration
 from lmfdb.users.pwdmanager import userdb
 from lmfdb.utils import datetime_to_timestamp_in_ms
 from psycopg2.sql import SQL, Identifier, Placeholder
+from sage.all import cached_function
 
 import re
 text_keywords = re.compile(r"\b[a-zA-Z0-9-]{3,}\b")
@@ -50,8 +50,7 @@ defines_finder_re = re.compile(r"""\*\*([^\*]+)\*\*""")
 # this one is different from the hashtag regex in main.py,
 # because of the match-group ( ... )
 hashtag_keywords = re.compile(r'#[a-zA-Z][a-zA-Z0-9-_]{1,}\b')
-common_words = set(
-    ['and', 'an', 'or', 'some', 'many', 'has', 'have', 'not', 'too', 'mathbb', 'title', 'for'])
+common_words = {'and', 'an', 'or', 'some', 'many', 'has', 'have', 'not', 'too', 'mathbb', 'title', 'for'}
 
 # categories, level 0, never change this id
 #CAT_ID = 'categories'
@@ -108,8 +107,10 @@ def extract_typ(kid):
             break
     return typ, url, name
 
+
 def extract_links(content):
-    return sorted(set(x[2] for x in link_finder_re.findall(content) if x[2]))
+    return sorted({x[2] for x in link_finder_re.findall(content) if x[2]})
+
 
 def normalize_define(term):
     m = define_fixer.search(term)
@@ -118,14 +119,17 @@ def normalize_define(term):
         term = define_fixer.sub(r'\%s'%n, term)
     return ' '.join(term.lower().replace('"', '').replace("'", "").split())
 
+
 def extract_defines(content):
-    return sorted(set(x.strip() for x in defines_finder_re.findall(content)))
+    return sorted({x.strip() for x in defines_finder_re.findall(content)})
 
 # We don't use the PostgresTable from lmfdb.backend.database
 # since it's aimed at constructing queries for mathematical objects
 
+
 class KnowlBackend(PostgresBase):
     _default_fields = ['authors', 'cat', 'content', 'last_author', 'timestamp', 'title', 'status', 'type', 'links', 'defines', 'source', 'source_name'] # doesn't include id, _keywords, reviewer or review_timestamp
+
     def __init__(self):
         PostgresBase.__init__(self, 'db_knowl', db)
         self._rw_knowldb = db.can_read_write_knowls()
@@ -140,7 +144,7 @@ class KnowlBackend(PostgresBase):
         now = time.time()
         if now - self.cached_titles_timestamp > self.caching_time:
             self.cached_titles_timestamp = now
-            self.cached_titles = dict([(elt['id'], elt['title']) for elt in self.get_all_knowls(['id','title'])])
+            self.cached_titles = {elt['id']: elt['title'] for elt in self.get_all_knowls(['id','title'])}
         return self.cached_titles
 
     @property
@@ -175,7 +179,7 @@ class KnowlBackend(PostgresBase):
         if not beta:
             cur = self._execute(selecter, [ID, 1])
             if cur.rowcount > 0:
-                return {k:v for k,v in zip(fields, cur.fetchone())}
+                return dict(zip(fields, cur.fetchone()))
         cur = self._execute(selecter, [ID, -2 if allow_deleted else 0])
         if cur.rowcount > 0:
             return dict(zip(fields, cur.fetchone()))
@@ -333,7 +337,6 @@ class KnowlBackend(PostgresBase):
         return {rec[0].split(".")[-1]: Knowl(rec[0], data=dict(zip(fields, rec))) for rec in cur}
 
     def set_column_description(self, table, col, description):
-        from lmfdb import db
         uid = db.login()
         kid = f"columns.{table}.{col}"
         data = {
@@ -382,7 +385,6 @@ class KnowlBackend(PostgresBase):
             k.code_referrers = [
                     code_snippet_knowl(D, full=False)
                     for D in self.code_references(k)]
-
 
     def needs_review(self, days):
         now = datetime.utcnow()
@@ -438,7 +440,7 @@ class KnowlBackend(PostgresBase):
             if beta is None:
                 beta = is_beta()
             if not beta:
-                # Have to make sure we do display references where the the most recent positively reviewed knowl does reference this, but the most recent beta does not.
+                # Have to make sure we do display references where the most recent positively reviewed knowl does reference this, but the most recent beta does not.
                 selecter = SQL("SELECT id FROM (SELECT DISTINCT ON (id) id, links FROM kwl_knowls WHERE status > %s AND type != %s ORDER BY id, timestamp DESC) knowls WHERE links @> %s")
                 cur = self._execute(selecter, values)
                 good_ids = [rec[0] for rec in cur]
@@ -459,7 +461,8 @@ class KnowlBackend(PostgresBase):
         """
         Returns lists of knowl ids (grouped by category) that are not referenced by any code or other knowl.
         """
-        kids = set(k['id'] for k in self.get_all_knowls(['id'], types=[0]) if not any(k['id'].startswith(x) for x in ["users.", "test."]))
+        kids = {k['id'] for k in self.get_all_knowls(['id'], types=[0]) if not any(k['id'].startswith(x) for x in ["users.", "test."])}
+
         def filter_from_matches(pattern):
             matches = subprocess.check_output(['git', 'grep', '-E', '--full-name', '--line-number', '--context', '2', pattern],encoding='utf-8').split('\n--\n')
             for match in matches:
@@ -662,7 +665,7 @@ class KnowlBackend(PostgresBase):
         as in ``code_references``, and ``links`` is a list of purported knowl
         ids that show up in an expression of the form ``KNOWL('BAD_ID')``.
         """
-        all_kids = set(k['id'] for k in self.get_all_knowls(['id']))
+        all_kids = {k['id'] for k in self.get_all_knowls(['id'])}
         if sys.version_info[0] == 3:
             matches = subprocess.check_output(['git', 'grep', '-E', '--full-name', '--line-number', '--context', '2', link_finder_re.pattern],encoding='utf-8').split('\n--\n')
         else:
@@ -748,23 +751,19 @@ def knowl_title(kid):
 def knowl_exists(kid):
     return knowldb.knowl_exists(kid)
 
+@cached_function
 def knowl_url_prefix():
     """
-    why is this function needed?
-    if you're running lmfdb in cocalc, front-end javascript (see: lmfdb.js) doesn't know your prefix isn't just a website domain.
+    if one is running lmfdb in cocalc, front-end javascript (see: lmfdb.js) doesn't know your prefix isn't just a website domain.
     """
-    flask_options = Configuration().get_flask()
-    if "COCALC_PROJECT_ID" in os.environ:
-        return 'https://cocalc.com/' + os.environ['COCALC_PROJECT_ID'] + "/server/" + str(flask_options['port'])
-    else:
-        return ""
+    return Configuration().get_url_prefix()
 
 # allowed qualities for knowls
 knowl_status_code = {'reviewed':1, 'beta':0, 'in progress': -1, 'deleted': -2}
 reverse_status_code = {v:k for k,v in knowl_status_code.items()}
 knowl_type_code = {'normal': 0, 'top': 1, 'bottom': -1, 'column': 2}
 
-class Knowl(object):
+class Knowl():
     """
     INPUT:
 
@@ -817,7 +816,6 @@ class Knowl(object):
             pieces = ID.split(".")
             # Ignore the title passed in
             self.title = f"Column {pieces[2]} of table {pieces[1]}"
-            from lmfdb import db
             if pieces[1] in db.tablenames:
                 self.coltype = db[pieces[1]].col_type.get(pieces[2], "DEFUNCT")
             else:
@@ -855,9 +853,9 @@ class Knowl(object):
             #                          "status":0}]
             uids = [ elt['last_author'] for elt in self.edit_history]
             if uids:
-                full_names = dict([ (elt['username'], elt['full_name']) for elt in userdb.full_names(uids)])
+                full_names = {elt['username']: elt['full_name'] for elt in userdb.full_names(uids)}
             else:
-                full_names = dict({})
+                full_names = {}
             self.previous_review_spot = None
             for i, elt in enumerate(self.edit_history):
                 elt['ms_timestamp'] = datetime_to_timestamp_in_ms(elt['timestamp'])

@@ -1,18 +1,16 @@
 
 # -*- coding: utf-8 -*-
-import ast
 import re
-from io import BytesIO
 import time
 
-from flask import abort, render_template, request, url_for, redirect, make_response, send_file
+from flask import abort, render_template, request, url_for, redirect, make_response
 from sage.all import ZZ, QQ, PolynomialRing, latex, matrix, PowerSeriesRing, sqrt, round
 
 from lmfdb.utils import (
     web_latex_split_on_pm, flash_error, to_dict,
     SearchArray, TextBox, CountBox, prop_int_pretty,
     parse_ints, parse_list, parse_count, parse_start, clean_input,
-    search_wrap, redirect_no_cache)
+    search_wrap, redirect_no_cache, Downloader)
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.utils.search_columns import SearchColumns, LinkCol, MathCol
 from lmfdb.api import datapage
@@ -59,7 +57,7 @@ def get_bread(tail=[]):
 def learnmore_list():
     return [('Source and acknowledgments', url_for(".how_computed_page")),
             ('Completeness of the data', url_for(".completeness_page")),
-            ('Reliability of the data', url_for(".reliability_page")),            
+            ('Reliability of the data', url_for(".reliability_page")),
             ('Labels for integral lattices', url_for(".labels_page")),
             ('History of lattices', url_for(".history_page"))]
 
@@ -142,34 +140,6 @@ download_assignment_start = {'magma':'data := ','sage':'data = ','gp':'data = '}
 download_assignment_end = {'magma':';','sage':'','gp':''}
 download_file_suffix = {'magma':'.m','sage':'.sage','gp':'.gp'}
 
-def download_search(info):
-    lang = info["Submit"]
-    filename = 'integral_lattices' + download_file_suffix[lang]
-    mydate = time.strftime("%d %B %Y")
-    # reissue saved query here
-
-    res = list(db.lat_lattices.search(ast.literal_eval(info["query"]), 'gram'))
-
-    c = download_comment_prefix[lang]
-    s =  '\n'
-    s += c + ' Integral lattices downloaded from the LMFDB on %s. Found %s lattices.\n\n'%(mydate, len(res))
-    # The list entries are matrices of different sizes.  Sage and gp
-    # do not mind this but Magma requires a different sort of list.
-    list_start = '[*' if lang=='magma' else '['
-    list_end = '*]' if lang=='magma' else ']'
-    s += download_assignment_start[lang] + list_start + '\\\n'
-    mat_start = "Mat(" if lang == 'gp' else "Matrix("
-    mat_end = "~)" if lang == 'gp' else ")"
-    entry = lambda r: "".join([mat_start,str(r),mat_end])
-    # loop through all search results and grab the gram matrix
-    s += ",\\\n".join(entry(gram) for gram in res)
-    s += list_end
-    s += download_assignment_end[lang]
-    s += '\n'
-    strIO = BytesIO()
-    strIO.write(s.encode('utf-8'))
-    strIO.seek(0)
-    return send_file(strIO, attachment_filename=filename, as_attachment=True, add_etags=False)
 
 lattice_search_projection = ['label','dim','det','level','class_number','aut','minimum']
 def lattice_search_isometric(res, info, query):
@@ -200,19 +170,19 @@ def url_for_label(label):
     return url_for(".render_lattice_webpage", label=label)
 
 lattice_columns = SearchColumns([
-    LinkCol("label", "lattice.label", "Label", url_for_label, default=True),
-    MathCol("dim", "lattice.dimension", "Dimension", default=True),
-    MathCol("det", "lattice.determinant", "Determinant", default=True),
-    MathCol("level", "lattice.level", "Level", default=True),
-    MathCol("class_number", "lattice.class_number", "Class number", default=True),
-    MathCol("minimum", "lattice.minimal_vector", "Minimal vector", default=True),
-    MathCol("aut", "lattice.group_order", "Aut. group order", default=True)])
+    LinkCol("label", "lattice.label", "Label", url_for_label),
+    MathCol("dim", "lattice.dimension", "Dimension"),
+    MathCol("det", "lattice.determinant", "Determinant"),
+    MathCol("level", "lattice.level", "Level"),
+    MathCol("class_number", "lattice.class_number", "Class number"),
+    MathCol("minimum", "lattice.minimal_vector", "Minimal vector"),
+    MathCol("aut", "lattice.group_order", "Aut. group order")])
 
 @search_wrap(table=db.lat_lattices,
              title='Integral lattices search results',
              err_title='Integral lattices search error',
              columns=lattice_columns,
-             shortcuts={'download':download_search,
+             shortcuts={'download':Downloader(db.lat_lattices),
                         'label':lambda info:lattice_by_label_or_name(info.get('label'))},
              postprocess=lattice_search_isometric,
              url_for_label=url_for_label,
@@ -276,7 +246,7 @@ def render_lattice_webpage(**args):
             (i, url_for(".render_lattice_webpage_download", label=info['label'], lang=i, obj='shortest_vectors')) for i in ['gp', 'magma','sage']]
 
     if f['name']==['Leech']:
-        info['shortest']=[str([1,-2,-2,-2,2,-1,-1,3,3,0,0,2,2,-1,-1,-2,2,-2,-1,-1,0,0,-1,2]), 
+        info['shortest']=[str([1,-2,-2,-2,2,-1,-1,3,3,0,0,2,2,-1,-1,-2,2,-2,-1,-1,0,0,-1,2]),
 str([1,-2,-2,-2,2,-1,0,2,3,0,0,2,2,-1,-1,-2,2,-1,-1,-2,1,-1,-1,3]), str([1,-2,-2,-1,1,-1,-1,2,2,0,0,2,2,0,0,-2,2,-1,-1,-1,0,-1,-1,2])]
         info['all_shortest']="no"
         info['download_shortest'] = [
@@ -330,7 +300,7 @@ str([1,-2,-2,-2,2,-1,0,2,3,0,0,2,2,-1,-1,-2,2,-1,-1,-2,1,-1,-1,3]), str([1,-2,-2
     info['properties']=[('Label', '%s' % info['label'])]+info['properties']
     downloads = [("Underlying data", url_for(".lattice_data", label=lab))]
 
-    if info['name'] != "" :
+    if info['name'] != "":
         info['properties']=[('Name','%s' % info['name'] )]+info['properties']
 #    friends = [('L-series (not available)', ' ' ),('Half integral weight modular forms (not available)', ' ')]
     return render_template(
@@ -456,7 +426,7 @@ def download_lattice_full_lists_g(**args):
     c = download_comment_prefix[lang]
     mat_start = "Mat(" if lang == 'gp' else "Matrix("
     mat_end = "~)" if lang == 'gp' else ")"
-    entry = lambda r: "".join([mat_start,str(r),mat_end])
+    def entry(r): return "".join([mat_start,str(r),mat_end])
 
     outstr = c + ' Full list of genus representatives downloaded from the LMFDB on %s. \n\n'%(mydate)
     outstr += download_assignment_start[lang] + '[\\\n'
@@ -468,13 +438,13 @@ def download_lattice_full_lists_g(**args):
 
 class LatSearchArray(SearchArray):
     noun = "lattice"
-    plural_noun = "lattices"
     sorts = [("", "dimension", ['dim', 'det', 'level', 'class_number', 'label']),
              ("det", "determinant", ['det', 'dim', 'level', 'class_number', 'label']),
              ("level", "level", ['level', 'dim', 'det', 'class_number', 'label']),
              ("class_number", "class number", ['class_number', 'dim', 'det', 'level', 'label']),
              ("minimum", "minimal vector length", ['minimum', 'dim', 'det', 'level', 'class_number', 'label']),
              ("aut", "automorphism group", ['aut', 'dim', 'det', 'level', 'class_number', 'label'])]
+
     def __init__(self):
         dim = TextBox(
             name="dim",

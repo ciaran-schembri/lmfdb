@@ -90,12 +90,13 @@ def filter_sql_injection(clause, col, col_type, op, table):
                 raise SearchParsingError("%s: invalid characters %s (only +*-/^() allowed)" % (clause, piece))
     return SQL("{0} %s {1}" % op).format(col, SQL("").join(processed)), values
 
+
 def IdentifierWrapper(name, convert=True):
     """
     Returns a composable representing an SQL identifier.
 
     This is  wrapper for psycopg2.sql.Identifier that supports ARRAY slicers
-    and coverts them (if desired) from the Python format to SQL,
+    and converts them (if desired) from the Python format to SQL,
     as SQL starts at 1, and it is inclusive at the end
 
     EXAMPLES::
@@ -160,7 +161,7 @@ class LockError(RuntimeError):
     pass
 
 
-class QueryLogFilter(object):
+class QueryLogFilter():
     """
     A filter used when logging slow queries.
     """
@@ -172,7 +173,7 @@ class QueryLogFilter(object):
             return 0
 
 
-class EmptyContext(object):
+class EmptyContext():
     """
     Used to simplify code in cases where we may or may not want to open an extras file.
     """
@@ -186,7 +187,7 @@ class EmptyContext(object):
         pass
 
 
-class DelayCommit(object):
+class DelayCommit():
     """
     Used to set default behavior for whether to commit changes to the database connection.
 

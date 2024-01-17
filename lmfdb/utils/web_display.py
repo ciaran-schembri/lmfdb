@@ -1,4 +1,5 @@
 import re
+from flask import url_for
 from urllib.parse import urlencode
 from markupsafe import escape
 from sage.all import (
@@ -9,6 +10,7 @@ from sage.all import (
     factor,
     PolynomialRing,
     TermOrder,
+    matrix
 )
 from . import coeff_to_poly
 ################################################################################
@@ -42,7 +44,6 @@ def raw_typeset(raw, typeset='', extra='', compressed=False):
     raw = re.sub(r'\s+', ' ', str(raw).strip())
     raw = f'<textarea rows="1" cols="{len(raw)}" class="raw-container">{raw}</textarea>'
 
-
     # the doublesclick behavior is set on load in javascript
     out = f"""
 <span class="raw-tset-container tset {"compressed" if compressed else ""}">
@@ -68,11 +69,18 @@ def display_knowl(kid, title=None, kwargs={}):
     there will be no edit link for authenticated users.
     """
     from lmfdb.knowledge.knowl import knowl_title
+    from flask_login import current_user
+    from lmfdb.users.pwdmanager import userdb
     ktitle = knowl_title(kid)
     if ktitle is None:
         # Knowl not found
-        if title is None:
-            return """<span class="knowl knowl-error">'%s'</span>""" % kid
+        if current_user.is_authenticated and userdb.can_read_write_userdb():
+            if title is None:
+                return f"""<span class="knowl knowl-error">'{kid}'<a href="{ url_for('knowledge.edit', ID=kid) }">Create it</a>. </span>"""
+            else:
+                return f"""<a href="{ url_for('knowledge.edit', ID=kid) }"><span class="knowl knowl-error">{title}</span></a>"""
+        elif title is None:
+            return f"""<span class="knowl knowl-error">'{kid}'</span>"""
         else:
             return title
     else:
@@ -107,12 +115,19 @@ def web_latex(x, enclose=True):
 
 def compress_int(n, cutoff=15, sides=2):
     res = str(n)
-    if abs(n) >= 10**cutoff:
-        short = res[:sides + (1 if n < 0 else 0)] + r'\!\cdots\!' + res[-sides:]
+    minus_width = 1 if '-' in res else 0
+    if len(res) > cutoff+minus_width:
+        short = res[:sides + minus_width] + r'\!\cdots\!' + res[-sides:]
         return short, True
     else:
         return res, False
 
+def compress_expression(expression, cutoff=15, sides=2):
+    r"""
+    Takes a string and any numbers (consecutive digits) longer than
+    cutoff gets replaced
+    """
+    return re.sub(r'\d+', lambda a: compress_int(str(a.group()),cutoff, sides)[0], expression)
 
 def bigint_knowl(n, cutoff=20, max_width=70, sides=2):
     short, shortened = compress_int(n, cutoff=cutoff, sides=sides)
@@ -149,7 +164,8 @@ def make_bigint(s, cutoff=20, max_width=70):
 
     The string ``s`` with integers at least 10^cutoff replaced by bigint_knowls.
     """
-    Zmatcher = re.compile(r'([0-9]{%s,})' % (cutoff+1))
+    Zmatcher = re.compile(r'([0-9]{%s,})' % (cutoff + 1))
+
     def knowl_replacer(M):
         a = bigint_knowl(int(M.group(1)), cutoff, max_width=max_width)
         if a[0:2] == r'<a':
@@ -202,6 +218,36 @@ def factor_base_factorization_latex(fbf, cutoff=0):
     ans = ans[6:]
     return '- ' + ans if sign == -1 else ans
 
+def pos_int_and_factor(n, factor_base=None):
+    """
+    Display a positive integer in both decimal and factored for (just
+    decimal if n=1 or n is prime).
+    Also accounts for the possibility that n needs a bigint knowl
+    factor_base is a list of primes containing all primes dividing n
+    (but need not equal that list of primes exactly)
+    """
+    if n == 1:
+        return "$1$"
+    n = ZZ(n)
+    if factor_base:
+        factors = [(p, ZZ(n).valuation(p)) for p in factor_base]
+        factors = [(z[0],z[1]) for z in factors if z[1]>0]
+
+        def power_prime(p, exponent):
+            if exponent == 1:
+                return " " + str(p) + " "
+            else:
+                return " " + str(p) + "^{" + str(exponent) + "}"
+        latexfactors = r" \cdot ".join(power_prime(p, val) for (p, val) in factors)
+    else:
+        factors = n.factor()
+        latexfactors=latex(factors)
+    if len(factors) == 1 and factors[0][1] == 1:
+        return bigint_knowl(n, sides=3)
+    else:
+        return bigint_knowl(n, sides=3) + rf"\(\medspace =  {latexfactors} \)"
+
+
 def polyquo_knowl(f, disc=None, unit=1, cutoff=None):
     quo = "x^{%s}" % (len(f) - 1)
     i = len(f) - 2
@@ -220,9 +266,6 @@ def polyquo_knowl(f, disc=None, unit=1, cutoff=None):
         else:
             long += '\n<br>\nDiscriminant: \\(%s\\)' % (Factorization(disc, unit=unit)._latex_())
     return r'<a title="[poly]" knowl="dynamic_show" kwargs="%s">\(%s\)</a>'%(long, short)
-
-
-
 
 
 def web_latex_factored_integer(x, enclose=True, equals=False):
@@ -304,11 +347,11 @@ def web_latex_split_on_pm(x):
         A = r"\( %s \)" % latex(x)
 
        # need a more clever split_on_pm that inserts left and right properly
-    A = A.replace(r"\left","")
-    A = A.replace(r"\right","")
+    A = A.replace(r"\left", "")
+    A = A.replace(r"\right", "")
     for s in on:
-  #      A = A.replace(s, r'\) ' + s + r' \( ')
-   #     A = A.replace(s, r'\) ' + r' \( \mathstrut ' + s )
+        # A = A.replace(s, r'\) ' + s + r' \( ')
+        # A = A.replace(s, r'\) ' + r' \( \mathstrut ' + s )
         A = A.replace(s, r'\)' + r' \(\mathstrut ' + s + r'\mathstrut ')
     # the above will be re-done using a more sophisticated method involving
     # regular expressions.  Below fixes bad spacing when the current approach
@@ -325,7 +368,8 @@ def web_latex_split_on_pm(x):
     return A
     # return web_latex_split_on(x)
 
-def web_latex_split_on_re(x, r = '(q[^+-]*[+-])'):
+
+def web_latex_split_on_re(x, r='(q[^+-]*[+-])'):
     r"""
     Convert input into a latex string, with splits into separate latex strings
     occurring on given regex `r`.
@@ -364,7 +408,6 @@ def web_latex_split_on_re(x, r = '(q[^+-]*[+-])'):
     A = A.replace(r'( ', r'(')
     A = A.replace(r'+\) \(O', r'+O')
     return A
-
 
 
 def compress_polynomial(poly, threshold, decreasing=True):
@@ -474,10 +517,10 @@ def raw_typeset_poly(coeffs,
         denominatortset = f"/ {compress_int(denominator)[0]}"
 
     if compress_poly:
-            tset = compress_polynomial(
-                poly,
-                compress_threshold - len(denominatortset),
-                decreasing)
+        tset = compress_polynomial(
+            poly,
+            compress_threshold - len(denominatortset),
+            decreasing)
     else:
         if decreasing:
             tset = latex(poly)
@@ -502,7 +545,6 @@ def raw_typeset_poly(coeffs,
 
     if final_rawvar:
         raw = raw.replace(var, final_rawvar)
-
 
     return raw_typeset(raw, rf'\( {tset} \)', compressed=r'\cdots' in tset, **kwargs)
 
@@ -550,7 +592,6 @@ def raw_typeset_qexp(coeffs_list,
 
     rawvar = var.lstrip("\\")
     R = PolynomialRing(ZZ, rawvar)
-
 
     def rawtset_coeff(i, coeffs):
         poly = R(coeffs)
@@ -641,23 +682,22 @@ def compress_poly_Q(rawpoly,
         return r'\frac{%s}{%s}'%(compress_int(frac.numerator())[0], compress_int(frac.denominator())[0])
 
     tset = ''
-    for j in range(1,d+1):
-        csign = coefflist[d-j].sign()
+    for j in range(1, d + 1):
+        csign = coefflist[d - j].sign()
         if csign:
-            cabs = coefflist[d-j].abs()
-            if csign>0:
+            cabs = coefflist[d - j].abs()
+            if csign > 0:
                 tset += '+'
             else:
                 tset += '-'
-            if cabs != 1 or d-j==0:
+            if cabs != 1 or d == j:
                 tset += frac_string(cabs)
-            if d-j>0:
-                if d-j == 1:
+            if d > j:
+                if d - j == 1:
                     tset += var
                 else:
-                    tset += r'%s^{%s}'%(var,d-j)
+                    tset += r'%s^{%s}' % (var, d - j)
     return tset[1:]
-
 
 
 # copied here from hilbert_modular_forms.hilbert_modular_form as it
@@ -689,9 +729,6 @@ def teXify_pol(pol_str):  # TeXify a polynomial (or other string containing poly
     return o_str
 
 
-
-
-
 def to_ordinal(n):
     a = (n % 100) // 10
     if a == 1:
@@ -705,7 +742,6 @@ def to_ordinal(n):
         return '%srd' % n
     else:
         return '%sth' % n
-
 
 
 def add_space_if_positive(texified_pol):
@@ -730,19 +766,18 @@ def sparse_cyclotomic_to_latex(n, dat):
     and return sum_{j=1}^k cj zeta_n^ej in latex form as it is given
     (converting to sage will rewrite the element in terms of a basis)
     """
-
     dat.sort(key=lambda p: p[1])
-    ans=''
+    ans = ''
     z = r'\zeta_{%d}' % n
     for p in dat:
         if p[0] == 0:
             continue
-        if p[1]==0:
+        if p[1] == 0:
             if p[0] == 1 or p[0] == -1:
                 zpart = '1'
             else:
                 zpart = ''
-        elif p[1]==1:
+        elif p[1] == 1:
             zpart = z
         else:
             zpart = z+r'^{'+str(p[1])+'}'
@@ -765,7 +800,7 @@ def dispZmat(mat):
     """
     s = r'\begin{pmatrix}'
     for row in mat:
-        rw = '& '.join([str(z) for z in row])
+        rw = '& '.join(str(z) for z in row)
         s += rw + '\\\\'
     s += r'\end{pmatrix}'
     return s
@@ -781,7 +816,7 @@ def dispcyclomat(n, mat):
 
 
 def list_to_latex_matrix(li):
-    """
+    r"""
     Given a list of lists representing a matrix, output a latex representation
     of that matrix as a string.
 
@@ -790,7 +825,18 @@ def list_to_latex_matrix(li):
     '\\left(\\begin{array}{rr}1 & 0\\\\0 & 1\\end{array}\\right)'
     """
     dim = len(li[0])
-    mm = r"\left(\begin{array}{"+dim*"r" +"}"
-    mm += r"\\".join([" & ".join([str(a) for a in row]) for row in li])
+    mm = r"\left(\begin{array}{" + dim * "r" + "}"
+    mm += r"\\".join(" & ".join(str(a) for a in row) for row in li)
     mm += r'\end{array}\right)'
     return mm
+
+
+def dispZmat_from_list(a_list, dim):
+    r"""Display a matrix with integer entries from a list
+    """
+    num_entries = len(a_list)
+    assert num_entries == dim ** 2
+    output = []
+    for i in range(0,dim**2,dim):
+        output.append(a_list[i:i+dim])
+    return matrix(output)

@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import ast
 import re
-from io import BytesIO
-import time
 
-from flask import abort, render_template, url_for, request, redirect, send_file
-from sage.rings.all import PolynomialRing, ZZ
+from flask import abort, render_template, url_for, request, redirect
+from sage.rings.all import ZZ
 from sage.databases.cremona import cremona_letter_code
 
 from lmfdb import db
@@ -14,13 +11,13 @@ from lmfdb.logger import make_logger
 from lmfdb.utils import (
     to_dict, flash_error, integer_options, display_knowl, coeff_to_poly,
     SearchArray, TextBox, TextBoxWithSelect, SkipBox, CheckBox, CheckboxSpacer, YesNoBox,
-    parse_ints, parse_string_start, parse_subset, parse_submultiset, parse_bool, parse_bool_unknown,
+    parse_ints, parse_string_start, parse_subset, parse_newton_polygon, parse_submultiset, parse_bool, parse_bool_unknown,
     search_wrap, count_wrap, YesNoMaybeBox, CountBox, SubsetBox, SelectBox
 )
 from lmfdb.utils.interesting import interesting_knowls
 from lmfdb.api import datapage
 from . import abvarfq_page
-from .search_parsing import parse_newton_polygon, parse_nf_string, parse_galgrp
+from .search_parsing import parse_nf_string, parse_galgrp
 from .isog_class import validate_label, AbvarFq_isoclass
 from .stats import AbvarFqStats
 from lmfdb.utils import redirect_no_cache
@@ -77,10 +74,10 @@ def abelian_varieties():
     info = to_dict(request.args, search_array=AbvarSearchArray())
     if request.args:
         # hidden_search_type for prev/next buttons
-        info["search_type"] = search_type = info.get("search_type", info.get("hst", "List"))
+        info["search_type"] = search_type = info.get("search_type", info.get("hst", ""))
         if search_type == "Counts":
             return abelian_variety_count(info)
-        elif search_type in ['List', 'Random']:
+        elif search_type in ['List', '', 'Random']:
             return abelian_variety_search(info)
         else:
             flash_error("Invalid search type; if you did not enter it in the URL please report")
@@ -155,53 +152,6 @@ def url_for_label(label):
     g, q, iso = split_label(label)
     return url_for(".abelian_varieties_by_gqi", g=g, q=q, iso=iso)
 
-def download_search(info):
-    dltype = info["Submit"]
-    R = PolynomialRing(ZZ, "x")
-    delim = "bracket"
-    com = r"\\"  # single line comment start
-    com1 = ""  # multiline comment start
-    com2 = ""  # multiline comment end
-    filename = "weil_polynomials.gp"
-    mydate = time.strftime("%d %B %Y")
-    if dltype == "sage":
-        com = "#"
-        filename = "weil_polynomials.sage"
-    if dltype == "magma":
-        com = ""
-        com1 = "/*"
-        com2 = "*/"
-        delim = "magma"
-        filename = "weil_polynomials.m"
-    s = com1 + "\n"
-    s += com + " Weil polynomials downloaded from the LMFDB on %s.\n" % (mydate)
-    s += com + " Below is a list (called data), collecting the weight 1 L-polynomial\n"
-    s += com + " attached to each isogeny class of an abelian variety.\n"
-    s += "\n" + com2
-    s += "\n"
-
-    if dltype == "magma":
-        s += "P<x> := PolynomialRing(Integers()); \n"
-        s += "data := ["
-    else:
-        if dltype == "sage":
-            s += "x = polygen(ZZ) \n"
-        s += "data = [ "
-    s += "\\\n"
-    for f in db.av_fq_isog.search(ast.literal_eval(info["query"]), "poly"):
-        poly = R(f)
-        s += str(poly) + ",\\\n"
-    s = s[:-3]
-    s += "]\n"
-    if delim == "magma":
-        s = s.replace("[", "[*")
-        s = s.replace("]", "*]")
-        s += ";"
-    strIO = BytesIO()
-    strIO.write(s.encode('utf-8'))
-    strIO.seek(0)
-    return send_file(strIO, attachment_filename=filename, as_attachment=True, add_etags=False)
-
 @abvarfq_page.route("/data/<label>")
 def AV_data(label):
     if not lmfdb_label_regex.fullmatch(label):
@@ -214,10 +164,11 @@ def AV_data(label):
     sorts = [[], ["extension_degree"]] + [[]] * len(extension_labels)
     return datapage(labels, tables, title=f"Abelian variety isogeny class data - {label}", bread=bread, label_cols=label_cols, sorts=sorts)
 
+
 class AbvarSearchArray(SearchArray):
     sorts = [("", "dimension", ['g', 'q', 'poly']),
              ("q", "field", ['q', 'g', 'poly']),
-             ("p", "charactersitic", ['p', 'q', 'g', 'poly']),
+             ("p", "characteristic", ['p', 'q', 'g', 'poly']),
              ("p_rank", "p-rank", ['p_rank', 'g', 'q', 'poly']),
              ("p_rank_deficit", "p-rank deficit", ['p_rank_deficit', 'g', 'q', 'poly']),
              ("curve_count", "curve points", ['curve_count', 'g', 'q', 'poly']),
@@ -226,6 +177,7 @@ class AbvarSearchArray(SearchArray):
     jump_egspan = "e.g. 2.16.am_cn or 1 - x + 2x^2 or x^2 - x + 2"
     jump_knowl = "av.fq.search_input"
     jump_prompt = "Label or polynomial"
+
     def __init__(self):
         qshort = display_knowl("ag.base_field", "Base field")
         q = TextBox(
@@ -310,6 +262,7 @@ class AbvarSearchArray(SearchArray):
             short_label="Points on curve",
             advanced=True,
         )
+
         def nbsp(knowl, label):
             return "&nbsp;&nbsp;&nbsp;&nbsp;" + display_knowl(knowl, label)
         number_field = TextBox(
@@ -435,10 +388,13 @@ class AbvarSearchArray(SearchArray):
         )
         use_geom_index = CheckboxSpacer(use_geom_decomp, colspan=4, advanced=True)
         use_geom_refine = CheckboxSpacer(use_geom_decomp, colspan=5, advanced=True)
+
         def long_label(d):
-            return nbsp("av.decomposition", "Dimension %s factors" % d)
+            return nbsp("av.decomposition", f"Dimension {d} factors")
+
         def short_label(d):
-            return display_knowl("av.decomposition", "Dim %s factors" % d)
+            return display_knowl("av.decomposition", f"Dim {d} factors")
+
         dim1 = TextBox(
             "dim1_factors",
             label=long_label(1),
@@ -560,7 +516,7 @@ class AbvarSearchArray(SearchArray):
 
     def search_types(self, info):
         return self._search_again(info, [
-            ('List', 'List of isogeny classes'),
+            ('', 'List of isogeny classes'),
             ('Counts', 'Counts table'),
             ('Random', 'Random isogeny class')])
 
@@ -642,7 +598,7 @@ def jump(info):
         lead = cdict[deg]
         if lead == 1: # accept monic normalization
             lead = cdict[0]
-            cdict = {deg-exp : coeff for (exp, coeff) in cdict.items()}
+            cdict = {deg-exp: coeff for (exp, coeff) in cdict.items()}
         if cdict.get(0) != 1:
             flash_error ("%s is not valid input.  Polynomial must have constant or leading coefficient 1", jump_box)
             return redirect(url_for(".abelian_varieties"))
@@ -656,24 +612,26 @@ def jump(info):
         except ValueError:
             flash_error ("%s is not valid input.  Expected a label or Weil polynomial.", jump_box)
             return redirect(url_for(".abelian_varieties"))
+
         def extended_code(c):
             if c < 0:
                 return 'a' + cremona_letter_code(-c)
             return cremona_letter_code(c)
+
         jump_box = "%s.%s.%s" % (g, q, "_".join(extended_code(cdict.get(i, 0)) for i in range(1, g+1)))
     return by_label(jump_box)
 
 abvar_columns = SearchColumns([
-    LinkCol("label", "ab.fq.lmfdb_label", "Label", url_for_label, default=True),
-    MathCol("g", "ag.dimension", "Dimension", default=True),
-    MathCol("field", "ag.base_field", "Base field", default=True),
-    MathCol("p", "ag.base_field", "Base char.", short_title="base characteristic"),
-    MathCol("formatted_polynomial", "av.fq.l-polynomial", "L-polynomial", short_title="L-polynomial", default=True),
-    MathCol("p_rank", "av.fq.p_rank", "$p$-rank", default=True),
-    MathCol("p_rank_deficit", "av.fq.p_rank", "$p$-rank deficit"),
-    MathCol("curve_count", "av.fq.curve_point_counts", "points on curve"),
-    MathCol("abvar_count", "ag.fq.point_counts", "points on variety"),
-    SearchCol("decomposition_display_search", "av.decomposition", "Isogeny factors", default=True)],
+    LinkCol("label", "ab.fq.lmfdb_label", "Label", url_for_label),
+    MathCol("g", "ag.dimension", "Dimension"),
+    MathCol("field", "ag.base_field", "Base field", download_col="q"),
+    MathCol("p", "ag.base_field", "Base char.", short_title="base characteristic", default=False),
+    MathCol("formatted_polynomial", "av.fq.l-polynomial", "L-polynomial", short_title="L-polynomial", download_col="polynomial"),
+    MathCol("p_rank", "av.fq.p_rank", "$p$-rank"),
+    MathCol("p_rank_deficit", "av.fq.p_rank", "$p$-rank deficit", default=False),
+    MathCol("curve_count", "av.fq.curve_point_counts", "points on curve", default=False),
+    MathCol("abvar_count", "ag.fq.point_counts", "points on variety", default=False),
+    SearchCol("decomposition_display_search", "av.decomposition", "Isogeny factors", download_col="decompositionraw")],
     db_cols=["label", "g", "q", "poly", "p_rank", "p_rank_deficit", "is_simple", "simple_distinct", "simple_multiplicities", "is_primitive", "primitive_models", "curve_count", "abvar_count"])
 
 @search_wrap(
@@ -683,7 +641,7 @@ abvar_columns = SearchColumns([
     columns=abvar_columns,
     shortcuts={
         "jump": jump,
-        "download": download_search,
+        "download": AbvarFq_download(),
     },
     postprocess=lambda res, info, query: [AbvarFq_isoclass(x) for x in res],
     url_for_label=url_for_label,
@@ -710,7 +668,7 @@ def abelian_variety_count(info, query):
     def url_generator(g, q):
         info_copy = dict(urlgen_info)
         info_copy.pop("search_array", None)
-        info_copy["search_type"] = "List"
+        info_copy.pop("search_type", None)
         info_copy["g"] = g
         info_copy["q"] = q
         return url_for("abvarfq.abelian_varieties", **info_copy)

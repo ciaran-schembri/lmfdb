@@ -29,7 +29,6 @@ class NumberFieldTest(LmfdbTest):
         # z^3 - 4*z + 2
         self.check_args('/NumberField/?jump=z%5E3+-+4*z%2B2', '3.3.148.1') # label
 
-
     def test_search_zeta(self):
         self.check_args('/NumberField/?jump=Qzeta23&search=Go', '[3]') # class group
 
@@ -92,3 +91,7 @@ class NumberFieldTest(LmfdbTest):
 
     def test_underlying_data(self):
         self.check_args('NumberField/2.2.10069.1', ['Underlying data', 'data/2.2.10069.1'])
+
+    def test_errors(self):
+        self.check_args('NumberField/18.0.10490638424...4432.1/download/sage', 'Invalid label')
+        self.check_args('NumberField/4.3.2.1/download/sage', 'There is no number field with label 4.3.2.1')

@@ -18,7 +18,7 @@ def strbool(s):
         raise ValueError(s)
 
 
-class Configuration(object):
+class Configuration():
     """
     This configuration object merges input from the command line and a configuration file.
 
@@ -172,8 +172,6 @@ class Configuration(object):
                         sec, opt = sec_opt(key)
                         write_args[sec][opt] = str(val)
 
-
-
             _cfgp = ConfigParser()
             # create sections
             for sec, options in write_args.items():
@@ -217,9 +215,10 @@ class Configuration(object):
                 type_dict[action.dest] = strbool
             else:
                 type_dict[action.dest] = action.type
+
         def get(section, key):
             val = _cfgp.get(section, key)
-            full = section+"_"+key
+            full = section + "_" + key
             type_func = type_dict.get(full)
             if type_func is not None:
                 val = type_func(val)

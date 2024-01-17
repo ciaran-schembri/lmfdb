@@ -204,7 +204,7 @@ def _meta_table_name(meta_name):
     return table_name
 
 
-class PostgresBase(object):
+class PostgresBase():
     """
     A base class for various objects that interact with Postgres.
 
@@ -221,8 +221,8 @@ class PostgresBase(object):
         logging_options = db.config.options["logging"]
         self.slow_cutoff = logging_options["slowcutoff"]
         self.logger = l = logging.getLogger(loggername)
-        l.propogate = False
-        l.setLevel(logging.INFO)
+        l.propagate = False
+        l.setLevel(logging_options.get('loglevel', logging.INFO))
         fhandler = logging.FileHandler(logging_options["slowlogfile"])
         formatter = logging.Formatter("%(asctime)s - %(message)s")
         filt = QueryLogFilter()
@@ -252,7 +252,7 @@ class PostgresBase(object):
 
         - ``query`` -- an SQL Composable object, the SQL command to execute.
         - ``values`` -- values to substitute for %s in the query.  Quoting from the documentation
-            for psycopg2 (http://initd.org/psycopg/docs/usage.html#passing-parameters-to-sql-queries):
+            for psycopg2 (https://initd.org/psycopg/docs/usage.html#passing-parameters-to-sql-queries):
 
             Never, never, NEVER use Python string concatenation (+) or string parameters
             interpolation (%) to pass variables to a SQL query string. Not even at gunpoint.
@@ -377,8 +377,14 @@ class PostgresBase(object):
 
         - ``tablename`` -- a string, the name of the table
         """
-        cur = self._execute(SQL("SELECT 1 from pg_tables where tablename=%s"), [tablename], silent=True)
+        cur = self._execute(SQL("SELECT 1 FROM pg_tables where tablename=%s"), [tablename], silent=True)
         return cur.fetchone() is not None
+
+    def _all_tablenames(self):
+        """
+        Return all (postgres) table names in the database
+        """
+        return [rec[0] for rec in self._execute(SQL("SELECT tablename FROM pg_tables ORDER BY tablename"), silent=True)]
 
     def _get_locks(self):
         return self._execute(SQL(
@@ -670,7 +676,7 @@ class PostgresBase(object):
         INPUT:
 
         - ``sort_list`` -- a list, either of strings (which are interpreted as
-        column names in the ascending direction) or of pairs (column name, 1 or -1).
+          column names in the ascending direction) or of pairs (column name, 1 or -1).
 
         OUTPUT:
 
@@ -697,29 +703,29 @@ class PostgresBase(object):
 
         - ``table_name`` -- a string or list of strings
         - ``data_types`` -- (optional) a dictionary providing a list of column names and
-        types for each table name.  If not provided, will be looked up from the database.
+          types for each table name.  If not provided, will be looked up from the database.
 
-        EXAMPLE:
-        sage: db._column_types('non_existant')
-        ([], {}, False)
-        sage: db._column_types('test_table')
-        ([u'dim',
-          u'label',
-          u'discriminant',
-          u'bad_primes',
-          u'new_column1',
-          u'new_label',
-          u'bar'],
-         {u'bad_primes': 'jsonb',
-          u'bar': 'text',
-          u'dim': 'smallint',
-          u'discriminant': 'numeric',
-          u'id': 'bigint',
-          u'label': 'text',
-          u'new_column1': 'text',
-          u'new_label': 'text'},
-         True)
+        EXAMPLES::
 
+            sage: db._column_types('non_existant')
+            ([], {}, False)
+            sage: db._column_types('test_table')
+            ([u'dim',
+              u'label',
+              u'discriminant',
+              u'bad_primes',
+              u'new_column1',
+              u'new_label',
+              u'bar'],
+             {u'bad_primes': 'jsonb',
+              u'bar': 'text',
+              u'dim': 'smallint',
+              u'discriminant': 'numeric',
+              u'id': 'bigint',
+              u'label': 'text',
+              u'new_column1': 'text',
+              u'new_label': 'text'},
+             True)
         """
         has_id = False
         col_list = []
@@ -902,6 +908,21 @@ class PostgresBase(object):
 
                 return addid, cur.rowcount
 
+    def _get_tablespace(self):
+        # overridden in table and statstable
+        pass
+
+    def _tablespace_clause(self, tablespace=None):
+        """
+        A clause for use in CREATE statements
+        """
+        if tablespace is None:
+            tablespace = self._get_tablespace()
+        if tablespace is None:
+            return SQL("")
+        else:
+            return SQL(" TABLESPACE {0}").format(Identifier(tablespace))
+
     def _clone(self, table, tmp_table):
         """
         Utility function: creates a table with the same schema as the given one.
@@ -921,7 +942,7 @@ class PostgresBase(object):
                 "Run db.%s.cleanup_from_reload() if you want to delete it and proceed."
                 % (tmp_table, table)
             )
-        creator = SQL("CREATE TABLE {0} (LIKE {1})").format(Identifier(tmp_table), Identifier(table))
+        creator = SQL("CREATE TABLE {0} (LIKE {1}){2}").format(Identifier(tmp_table), Identifier(table), self._tablespace_clause())
         self._execute(creator)
 
     def _check_col_datatype(self, typ):
@@ -931,19 +952,21 @@ class PostgresBase(object):
 
     def _create_table(self, name, columns):
         """
-        Utility function: creates a table with the schema specified by `columns`
+        Utility function: creates a table with the schema specified by ``columns``.
+
+        If self is a table, the new table will be in the same tablespace.
 
         INPUT:
 
         - ``name`` -- the desired name
-        - ``columns`` -- list of pairs, where the first entry is the column name
-        and the second one is the corresponding type
+        - ``columns`` -- list of pairs, where the first entry is
+          the column name and the second one is the corresponding type
         """
         # FIXME make the code use this
         for col, typ in columns:
             self._check_col_datatype(typ)
         table_col = SQL(", ").join(SQL("{0} %s" % typ).format(Identifier(col)) for col, typ in columns)
-        creator = SQL("CREATE TABLE {0} ({1})").format(Identifier(name), table_col)
+        creator = SQL("CREATE TABLE {0} ({1}){2}").format(Identifier(name), table_col, self._tablespace_clause())
         self._execute(creator)
 
     def _create_table_from_header(self, filename, name, sep, addid=True):
@@ -1029,7 +1052,7 @@ class PostgresBase(object):
                 tablename_new = table + target
                 self._execute(rename_table.format(Identifier(tablename_old), Identifier(tablename_new)))
 
-                done = set({})  # done constraints/indexes
+                done = set()  # done constraints/indexes
                 # We threat pkey separately
                 pkey_old = table + source + "_pkey"
                 pkey_new = table + target + "_pkey"

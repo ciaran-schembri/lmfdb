@@ -2,6 +2,7 @@
 from lmfdb.tests import LmfdbTest
 from lmfdb.characters.web_character import WebDirichlet, parity_string, bool_string
 from lmfdb.lfunctions.LfunctionDatabase import get_lfunction_by_url
+from lmfdb.utils import comma
 
 
 class WebCharacterTest(LmfdbTest):
@@ -15,6 +16,12 @@ class WebCharacterTest(LmfdbTest):
 
 
 class DirichletSearchTest(LmfdbTest):
+    def test_nchars(self):
+        from lmfdb import db
+        nchars = db.char_orbits.sum_column('degree')
+        assert nchars == 3039650754 # if this fails, one also needs to update DirichStats.__init__
+        W = self.tc.get('/Character/Dirichlet/')
+        assert comma(nchars) in W.get_data(as_text=True)
 
     def test_order(self):
         W = self.tc.get('/Character/Dirichlet/?order=19-23')
@@ -137,13 +144,20 @@ class DirichletCharactersTest(LmfdbTest):
         assert 'Error: No Galois orbit of Dirichlet characters with' in W.get_data(as_text=True)
 
         W = self.tc.get('/Character/Dirichlet/10001/banana/100', follow_redirects=True)
-        assert r'labels have not been computed for this modulus' in W.get_data(as_text=True)
+        assert r'10001.i' in W.get_data(as_text=True)
 
         W = self.tc.get('/Character/Dirichlet/9999999999/banana', follow_redirects=True)
-        assert 'Error: Galois orbits have only been computed for modulus up to 10,000' in W.get_data(as_text=True)
+        assert 'Error: Galois orbits have only been computed for modulus up to 100,000' in W.get_data(as_text=True)
+
+        W = self.tc.get('/Character/Dirichlet/58589/50021', follow_redirects=True)
+        assert 'Number field defined by a degree 1428 polynomial' in W.get_data(as_text=True)
 
     def test_dirichletchar11(self):
         W = self.tc.get('/Character/Dirichlet/1/1')
+        assert '/NumberField/1.1.1.1' in W.get_data(as_text=True)
+
+    def test_dirichletchar21(self):
+        W = self.tc.get('/Character/Dirichlet/2/1')
         assert '/NumberField/1.1.1.1' in W.get_data(as_text=True)
 
     def test_valuefield(self):
@@ -197,8 +211,8 @@ class DirichletCharactersTest(LmfdbTest):
         """ Check Sato-Tate group and L-function link for 6000/11  """
         W = self.tc.get('/Character/Dirichlet/6000/11')
         assert '/SatoTateGroup/0.1.100' in W.get_data(as_text=True)
-        assert 'L/Character/Dirichlet/6000/11' in W.get_data(as_text=True)
-        W = self.tc.get('/L/Character/Dirichlet/6000/11', follow_redirects=True)
+        assert 'L/1-6000-6000.11-r0-0-0' in W.get_data(as_text=True)
+        W = self.tc.get('L/1-6000-6000.11-r0-0-0', follow_redirects=True)
         assert '1.076603021' in W.get_data(as_text=True)
 
     def test_dirichletchar9999lfunc(self):
@@ -237,6 +251,6 @@ class DirichletCharactersTest(LmfdbTest):
 
     def test_underlying_data(self):
         W = self.tc.get('/Character/Dirichlet/data/289.j.7').get_data(as_text=True)
-        assert 'is_minimal' in W and 'values_gens' in W
+        assert 'is_minimal' in W and 'last_label' in W
         W = self.tc.get('/Character/Dirichlet/data/289.j').get_data(as_text=True)
         assert 'is_minimal' in W

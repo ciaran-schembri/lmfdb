@@ -54,7 +54,6 @@ def index():
     return render_template("glnQ-index.html", title=r"Finite subgroups of $\GL(n,\Q)$", bread=bread, info=info, learnmore=learnmore_list(), credit=credit_string)
 
 
-
 @glnQ_page.route("/random")
 def random_glnQ_group():
     label = db.gps_qrep.random(projection='label')
@@ -103,10 +102,10 @@ def get_url(label):
     return url_for(".by_label", label=label)
 
 glnQ_columns = SearchColumns([
-    LinkCol("label", "group.label", "Label", get_url, default=True),
-    MathCol("tex_name", "group.name", "Name", default=True),
-    MathCol("order", "group.order", "Order", default=True),
-    MathCol("dim", "group.dimension", "Dimension", default=True)],
+    LinkCol("label", "group.label", "Label", get_url),
+    MathCol("tex_name", "group.name", "Name"),
+    MathCol("order", "group.order", "Order"),
+    MathCol("dim", "group.dimension", "Dimension")],
     db_cols=["label", "group", "order", "dim"])
 glnQ_columns.dummy_download=True
 
@@ -145,7 +144,7 @@ def render_glnQ_group(args):
 
         title = r'$\GL('+str(info['dim'])+r',\Q)$ subgroup '  + label
 
-        prop = [('Label', '%s' %  label),
+        prop = [('Label', '%s' % label),
                 ('Order', r'\(%s\)' % info['order']),
                 ('Dimension', '%s' % info['dim']) ]
 
@@ -206,9 +205,9 @@ def how_computed_page():
 
 class GLnQSearchArray(SearchArray):
     noun = "group"
-    plural_noun = "groups"
     jump_example = "??"
     jump_egspan = "e.g. ??"
+
     def __init__(self):
         order = TextBox(
             name="order",

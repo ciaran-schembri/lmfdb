@@ -20,7 +20,7 @@ from sage.all import gcd
 CHARACTER_LABEL_RE = re.compile(r"^[1-9][0-9]*\.[1-9][0-9]*")
 MAASS_ID_RE = re.compile(r"^[0-9a-f]+$")
 
-bread_prefix = lambda: [('Modular forms', url_for('modular_forms')),('Maass', url_for('.index'))]
+def bread_prefix(): return [('Modular forms', url_for('modular_forms')),('Maass', url_for('.index'))]
 
 ###############################################################################
 # Learnmore display functions
@@ -139,6 +139,7 @@ def completeness_page():
     return render_template('single.html', kid='rcs.cande.maass',
                            title=t, bread=bread, learnmore=learnmore_list_remove('Completeness'))
 
+
 @maass_page.route('/Reliability')
 def reliability_page():
     t = 'Reliability of Maass form data'
@@ -146,16 +147,18 @@ def reliability_page():
     return render_template('single.html', kid='rcs.rigor.maass',
                            title=t, bread=bread, learnmore=learnmore_list_remove('Reliability'))
 
+
 class MaassSearchArray(SearchArray):
     sorts = [("", "level", ['level', 'weight', 'conrey_index', 'spectral_parameter']),
              ("spectral", "spectral parameter", ['spectral_parameter', 'weight', 'level', 'conrey_index'])]
     noun = "Maass form"
     plural_noun = "Maass forms"
+
     def __init__(self):
         level = TextBox(name="level", label="Level", knowl="mf.maass.mwf.level", example="1", example_span="997 or 1-10")
         weight = TextBox(name="weight", label="Weight", knowl="mf.maass.mwf.weight", example="0", example_span="0 (only weight 0 currently available)")
         character = TextBox(name="character", label="Character", knowl="mf.maass.mwf.character", example="1.1", example_span="1.1 or 5.1 (only trivial character currently available)")
-        symmetry = SelectBox(name="symmetry", label="Symmetry",  knowl="mf.maass.mwf.symmetry", options=[("", "any symmetry"), ("1", "even only"), ("-1", "odd only")])
+        symmetry = SelectBox(name="symmetry", label="Symmetry", knowl="mf.maass.mwf.symmetry", options=[("", "any symmetry"), ("1", "even only"), ("-1", "odd only")])
         spectral_parameter = TextBox(name="spectral_parameter",
                                      label="Spectral parameter",
                                      knowl="mf.maass.mwf.spectralparameter",
@@ -184,6 +187,7 @@ def parse_character(inp, query, qfield):
         raise ValueError("Character labels q.n must have Conrey index n no greater than the modulus q.")
     if gcd(level,conrey_index) != 1:
         raise ValueError("Character labels q.n must have Conrey index coprime to the modulus q.")
+
     def contains_level(D):
         if D == level:
             return True
@@ -191,6 +195,7 @@ def parse_character(inp, query, qfield):
             a = D.get('$gte')
             b = D.get('$lte')
             return (a is None or level >= a) and (b is None or level <= b)
+
     # Check that the provided constraint on level is consistent with the one
     # given by the character, and update level/$or
     if '$or' in query and all(level_field in D for D in query['$or']):
@@ -204,22 +209,22 @@ def parse_character(inp, query, qfield):
     query[conrey_index_field] = conrey_index
 
 maass_columns = SearchColumns([
-    MathCol("level", "mf.maass.mwf.level", "Level", default=True),
-    MathCol("weight", "mf.maass.mwf.weight", "Weight", default=True),
+    MathCol("level", "mf.maass.mwf.level", "Level"),
+    MathCol("weight", "mf.maass.mwf.weight", "Weight"),
     MultiProcessedCol("character", "mf.maass.mwf.character", "Char",
                       ["level", "conrey_index"],
                       character_link, short_title="character",
-                      default=True, align="center"),
+                      align="center", apply_download=False),
     MultiProcessedCol("spectral", "mf.maass.mwf.spectralparameter", "Spectral parameter",
                       ["maass_id", "spectral_parameter"],
                       lambda mid, param: '<a href="%s">%s</a>' % (url_for('.by_label', label=mid), param),
-                      default=True),
+                      download_col="spectral_parameter"),
     ProcessedCol("symmetry", "mf.maass.mwf.symmetry", "Symmetry",
                  symmetry_pretty,
-                 default=True, align="center"),
+                 align="center"),
     ProcessedCol("fricke_eigenvalue", "cmf.fricke", "Fricke",
                  fricke_pretty, short_title="Fricke",
-                 default=True, align="center")],
+                 align="center")],
     db_cols=["maass_id", "level", "weight", "conrey_index", "spectral_parameter", "symmetry", "fricke_eigenvalue"])
 
 @search_wrap(
@@ -254,7 +259,7 @@ def parse_rows_cols(info):
 
 def search_by_label(label):
     try:
-        mf =  WebMaassForm.by_label(label)
+        mf = WebMaassForm.by_label(label)
     except (KeyError,ValueError) as err:
         return abort(404,err.args)
     info = to_dict(request.args)

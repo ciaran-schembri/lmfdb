@@ -30,7 +30,7 @@ class APIEncoder(json.JSONEncoder):
                 return json.JSONEncoder.default(self, obj)
 
 
-def create_search_dict(table='', query=None, view_start=0, request = None):
+def create_search_dict(table='', query=None, view_start=0, request=None):
     """
     Build an empty search dictionary
     """
@@ -40,7 +40,7 @@ def create_search_dict(table='', query=None, view_start=0, request = None):
     else:
         query_alpha = query
 
-    search = {'table':table, 'query':query_alpha, 'view_start':view_start, 
+    search = {'table':table, 'query':query_alpha, 'view_start':view_start,
         'max_count':100, 'correct_count':False, 'count_only':False}
 
     if request:
@@ -50,7 +50,8 @@ def create_search_dict(table='', query=None, view_start=0, request = None):
         search['count_only'] = bool(request.args.get('_count_only', search['count_only']))
     return search
 
-def build_api_wrapper(api_key, api_type, data, request = None):
+
+def build_api_wrapper(api_key, api_type, data, request=None):
     """
     Build the outer wrapper of an API structure. This is used both for search results and for description queries.
     Is an outer structure so that it can be extended without collisions with data
@@ -60,10 +61,9 @@ def build_api_wrapper(api_key, api_type, data, request = None):
     data -- Container holding the inner data, should match the format expected for api_type
     request -- Flask request object to query for needed data
     """
-
-    return json.dumps({"key":api_key, 'built_at':str(datetime.datetime.now()), 
-        'api_version':api_version, 'type':api_type, 'data':data},
-        indent=4, sort_keys=False, cls = APIEncoder)
+    return json.dumps({"key": api_key, 'built_at': str(datetime.datetime.now()),
+        'api_version': api_version, 'type': api_type, 'data': data},
+        indent=4, sort_keys=False, cls=APIEncoder)
 
 
 def build_api_records(api_key, record_count, r_c_e, view_start,
@@ -82,9 +82,11 @@ def build_api_records(api_key, record_count, r_c_e, view_start,
     record_list -- Dictionary containing the records in the current view
 
     Keyword arguments:
-    max_count -- The maximum number of records in a view that a client can request. This should be the same as
-                 is returned in the main API page unless this value cannot be inferred without context
-    request -- Flask request object to query for needed data
+
+    - max_count -- The maximum number of records in a view that a
+      client can request. This should be the same as is returned in
+      the main API page unless this value cannot be inferred without context
+    - request -- Flask request object to query for needed data
 
     """
     view_count = min(view_count, record_count - view_start)
@@ -111,9 +113,11 @@ def build_api_search(api_key, mddtuple, max_count=None, request=None):
     search_dict -- Search dictionary compatible with simple_search
 
     Keyword arguments:
-    max_count -- The maximum number of records in a view that a client can request. This should be the same as
-                 is returned in the main API page unless this value cannot be inferred without context
-    request -- Flask request object to query for needed data
+
+    - max_count -- The maximum number of records in a view that a
+      client can request. This should be the same as is returned in
+      the main API page unless this value cannot be inferred without context
+    - request -- Flask request object to query for needed data
 
     """
 
@@ -121,12 +125,12 @@ def build_api_search(api_key, mddtuple, max_count=None, request=None):
     data = mddtuple[1]
     search_dict = mddtuple[2]
     if metadata.get('error_string', None):
-        return build_api_error(metadata['error_string'], request = request)
-    return build_api_records(api_key, metadata['record_count'], metadata['correct_count'], 
-        search_dict['view_start'], metadata['view_count'], data, max_count = max_count, request = request)
+        return build_api_error(metadata['error_string'], request=request)
+    return build_api_records(api_key, metadata['record_count'], metadata['correct_count'],
+        search_dict['view_start'], metadata['view_count'], data, max_count=max_count, request=request)
 
-def build_api_searchers(names, human_names, descriptions, request = None):
 
+def build_api_searchers(names, human_names, descriptions, request=None):
     """
     Build an API response for the list of available searchers
     human_names -- List of human readable names
@@ -135,12 +139,11 @@ def build_api_searchers(names, human_names, descriptions, request = None):
     request -- Flask request object to query for needed data
     """
     item_list = [{n:{ 'human_name':h, 'desc':d}} for n, h, d in zip(names, human_names, descriptions)]
-    
+
     return build_api_wrapper('GLOBAL', api_type_searchers, item_list, request)
 
 
-def build_api_descriptions(api_key, description_object, request = None):
-
+def build_api_descriptions(api_key, description_object, request=None):
     """
     Build an API response for the descriptions of individual searches provided by a searcher
     api_key -- Named API key as registered with register_search_function
@@ -149,8 +152,8 @@ def build_api_descriptions(api_key, description_object, request = None):
     """
     return build_api_wrapper(api_key, api_type_descriptions, description_object, request)
 
-def build_api_inventory(api_key, description_object, request = None):
 
+def build_api_inventory(api_key, description_object, request=None):
     """
     Build an API response for the keys that could be returned by the searcher
     api_key -- Named API key as registered with register_search_function
@@ -160,8 +163,7 @@ def build_api_inventory(api_key, description_object, request = None):
     return build_api_wrapper(api_key, api_type_inventory, description_object, request)
 
 
-def build_api_error(string, request = None):
-
+def build_api_error(string, request=None):
     """
     Build an API response for an error
     string -- string to return as error
@@ -201,7 +203,6 @@ def build_description(objlist, name, desc, typ, h_name, db_name=None,
 
 
 def get_filtered_fields(coll_pair):
-
     """
     Get a list of fields on which searching is possible
     coll_pair -- Two element list or tuple (prefix, name)
@@ -263,10 +264,11 @@ def default_projection(request, cnames=None):
                 exclude = True
         except Exception:
             pass
-        project = build_query_projection(fields, exclude = exclude)
+        project = build_query_projection(fields, exclude=exclude)
     except Exception:
         project = None
     return project
+
 
 def build_query_projection(field_list, exclude=False):
     """
@@ -302,7 +304,6 @@ def compare_db_strings(str1, str2):
     return (splt1[0] == splt2[0]) and (splt1[1] == splt2[1])
 
 def trim_comparator(value, comparators):
-
     """
     Check for a comparator value and trim it off if found
     value -- Value to test
@@ -319,7 +320,6 @@ def trim_comparator(value, comparators):
     return value_new, result
 
 def interpret(query, qkey, qval, type_info):
-
     """
     Try to interpret a user supplied value into a mongo query
     query -- Existing (can be blank) dictionary to build the query in
@@ -340,7 +340,7 @@ def interpret(query, qkey, qval, type_info):
     if type_info and not qval.startswith("|"):
         user_infer = False
         qval, comparator = trim_comparator(qval, [(">","$gt"),("<","$lt"), ("%","$in"), ("<=","$le"), (">=","$ge")])
-        
+
         try:
             if type_info == 'string':
                 pass #Already a string
@@ -392,13 +392,13 @@ def interpret(query, qkey, qval, type_info):
             elif qval.startswith("py"):     # literal evaluation
                 qval = literal_eval(qval[2:])
             elif qval.startswith("cs"):     # containing string in list
-                qval = { "$in" : [qval[2:]] }
+                qval = { "$in": [qval[2:]] }
             elif qval.startswith("ci"):
-                qval = { "$in" : [int(qval[2:])] }
+                qval = { "$in": [int(qval[2:])] }
             elif qval.startswith("cf"):
-                qval = { "$in" : [float(qval[2:])] }
+                qval = { "$in": [float(qval[2:])] }
             elif qval.startswith("cpy"):
-                qval = { "$in" : [literal_eval(qval[3:])] }
+                qval = { "$in": [literal_eval(qval[3:])] }
         except Exception:
             # no suitable conversion for the value, keep it as string
             return
@@ -433,8 +433,9 @@ def simple_search_postgres(search_dict, projection=None):
     C = db[search_dict['table']]
     info = {}
     try:
-        data = C.search(search_dict['query'], projection = projection, limit = rcount, 
-            offset = offset, info = info)
+        data = C.search(search_dict['query'], projection=projection,
+                        limit=rcount,
+                        offset=offset, info=info)
     except Exception as e:
         data = []
         info['number'] = 0
@@ -443,7 +444,7 @@ def simple_search_postgres(search_dict, projection=None):
     metadata['record_count'] = info['number']
     metadata['correct_count'] = info['exact_count']
     if data:
-        data_out = list(list(data))
+        data_out = list(data)
     else:
         data_out = []
     metadata['view_count'] = len(data_out)

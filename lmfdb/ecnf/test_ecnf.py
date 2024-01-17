@@ -43,7 +43,8 @@ class EllCurveTest(LmfdbTest):
 
     def test_conductor(self):
         r"""
-        Check that the elliptic curve/#field tells about its conductor and disciminant
+        Check that the elliptic curve/#field tells about its conductor
+        and discriminant
         """
         L = self.tc.get('/EllipticCurve/2.0.7.1/10000.5/a/1')
         assert '10000' in L.get_data(as_text=True)
@@ -69,7 +70,7 @@ class EllCurveTest(LmfdbTest):
         L = self.tc.get('/EllipticCurve/2.0.4.1/5525.5/b/9')
         assert 'Code to Magma' in L.get_data(as_text=True)
         assert 'Code to SageMath' in L.get_data(as_text=True)
-        assert 'Code to GP' in L.get_data(as_text=True)
+        assert 'Code to PariGP' in L.get_data(as_text=True)
         L = self.tc.get('EllipticCurve/2.2.89.1/81.1/a/1/download/magma')
         assert 'Magma code for working with elliptic curve 2.2.89.1-81.1-a1' in L.get_data(as_text=True)
         L = self.tc.get('EllipticCurve/2.2.89.1/81.1/a/1/download/sage')
@@ -123,7 +124,7 @@ class EllCurveTest(LmfdbTest):
         """
         self.check_args('/EllipticCurve/?cm_disc=-4','1024.1-a1')
         self.not_check_args('/EllipticCurve/?cm_disc=-4','1.0.1-a1')
-        
+
         # make sure it works with 4-way PCM, CM, PCMnoCM, noCM switch
         self.check_args('/EllipticCurve/?cm_disc=-11&include_cm=PCMnoCM','14641.1-a1')
         self.not_check_args('/EllipticCurve/?cm_disc=-11&include_cm=PCMnoCM','9.1-CMa1')
